@@ -1552,12 +1552,14 @@ function App() {
                           >
                             {derivedComponentKeys.map((key) => {
                               const isSelected = item.sourceComponent.split(',').filter(s => s.trim()).includes(key);
+                              const componentAmount = result.totalsByComponent[key] || 0;
                               return (
                                 <label
                                   key={key}
                                   style={{
                                     display: 'flex',
                                     alignItems: 'center',
+                                    justifyContent: 'space-between',
                                     padding: '8px 12px',
                                     cursor: 'pointer',
                                     ...typography.bodyMedium,
@@ -1571,29 +1573,38 @@ function App() {
                                     e.currentTarget.style.backgroundColor = isSelected ? colors.surfaceVariant : colors.surface;
                                   }}
                                 >
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={(e) => {
-                                      const currentComponents = item.sourceComponent.split(',').filter(s => s.trim());
-                                      let newComponents;
-                                      if (e.target.checked) {
-                                        newComponents = [...currentComponents, key];
-                                      } else {
-                                        newComponents = currentComponents.filter(c => c !== key);
-                                      }
-                                      setDerivedItems(derivedItems.map(i => 
-                                        i.id === item.id ? { ...i, sourceComponent: newComponents.join(',') } : i
-                                      ));
-                                    }}
-                                    style={{
-                                      marginRight: '8px',
-                                      width: '16px',
-                                      height: '16px',
-                                      accentColor: colors.primary
-                                    }}
-                                  />
-                                  {titleCase(key)}
+                                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={(e) => {
+                                        const currentComponents = item.sourceComponent.split(',').filter(s => s.trim());
+                                        let newComponents;
+                                        if (e.target.checked) {
+                                          newComponents = [...currentComponents, key];
+                                        } else {
+                                          newComponents = currentComponents.filter(c => c !== key);
+                                        }
+                                        setDerivedItems(derivedItems.map(i => 
+                                          i.id === item.id ? { ...i, sourceComponent: newComponents.join(',') } : i
+                                        ));
+                                      }}
+                                      style={{
+                                        marginRight: '8px',
+                                        width: '16px',
+                                        height: '16px',
+                                        accentColor: colors.primary
+                                      }}
+                                    />
+                                    <span>{titleCase(key)}</span>
+                                  </div>
+                                  <span style={{ 
+                                    color: colors.onSurfaceVariant, 
+                                    fontSize: '0.875rem',
+                                    fontWeight: 500
+                                  }}>
+                                    {formatCurrency(componentAmount)}
+                                  </span>
                                 </label>
                               );
                             })}
