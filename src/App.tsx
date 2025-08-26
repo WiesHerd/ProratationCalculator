@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useIndexedDBState } from './hooks/useIndexedDBState';
 import { formatCurrency, parseCurrency, formatDate } from './lib/format';
 import { titleCase } from './lib/keys';
@@ -7,6 +7,8 @@ import { CalculationRecord, indexedDBService } from './lib/indexedDB';
 import { History } from './components/History';
 import { SaveCalculation } from './components/SaveCalculation';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 // Google Material Design 3 Typography System
 const typography = {
@@ -110,6 +112,9 @@ function App() {
   const [componentKeys, setComponentKeys] = useIndexedDBState('tcc.componentKeys', ['clinical']);
   const [periods, setPeriods] = useIndexedDBState('tcc.periods', seedPeriods);
   const [derivedItems, setDerivedItems] = useIndexedDBState('tcc.derivedItems', seedDerivedItems);
+  
+  // PDF export ref
+  const pdfRef = useRef<HTMLDivElement>(null);
 
   // Save/History modal state
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -217,127 +222,447 @@ function App() {
   const handleExportToExcel = () => {
     const workbook = XLSX.utils.book_new();
 
-    // Sheet 1: Breakdown
-    const breakdownData = result.breakdown.map((row) => ({
-      'Start Date': formatDate(row.startDate),
-      'End Date': formatDate(row.endDate),
-      'Days': row.days,
-      'Base Salary': row.baseSalary,
-      ...Object.fromEntries(
-        componentKeys.map((key) => [
-          `${titleCase(key)} FTE`,
-          periods.find((p) => p.id === row.periodId)?.splits[key] || 0,
-        ])
-      ),
-      ...Object.fromEntries(
-        componentKeys.map((key) => [
-          `${titleCase(key)} $`,
-          row.componentAmounts[key] || 0,
-        ])
-      ),
-      'Total $': row.totalAmount,
-    }));
-
-    // Add totals row
-    const totalsRow: Record<string, any> = {
-      'Start Date': 'TOTALS',
-      'End Date': '',
-      'Days': result.breakdown.reduce((sum, row) => sum + row.days, 0),
-      'Base Salary': periods.reduce((sum, p) => sum + p.baseSalary, 0),
-    };
-
-    componentKeys.forEach((key) => {
-      totalsRow[`${titleCase(key)} FTE`] = '';
-      totalsRow[`${titleCase(key)} $`] = result.totalsByComponent[key] || 0;
+    // Calculate total days properly (sum of unique period days, not individual breakdown days)
+    const uniquePeriods = new Map<string, { startDate: string; endDate: string }>();
+    periods.forEach(period => {
+      const key = `${period.startDate}-${period.endDate}`;
+      if (!uniquePeriods.has(key)) {
+        uniquePeriods.set(key, { startDate: period.startDate, endDate: period.endDate });
+      }
     });
-
-    totalsRow['Total $'] = Object.values(result.totalsByComponent).reduce(
-      (sum: number, amount: number) => sum + amount,
-      0
+    const totalDays = Array.from(uniquePeriods.values()).reduce((sum, period) => 
+      sum + dayCountInclusive(period.startDate, period.endDate), 0
     );
 
-    breakdownData.push(totalsRow as any);
-
-    const breakdownSheet = XLSX.utils.json_to_sheet(breakdownData);
-    XLSX.utils.book_append_sheet(workbook, breakdownSheet, 'Breakdown');
-
-    // Sheet 2: Totals
-    const totalsData = [
-      { Component: 'Component Totals', Amount: '' },
-      ...componentKeys.map((key) => ({
-        Component: titleCase(key),
-        Amount: result.totalsByComponent[key] || 0,
-      })),
-      { Component: '', Amount: '' },
-      { Component: 'Additional Incentives', Amount: '' },
-      ...Object.entries(result.derivedTotals).map(([id, amount]) => ({
-        Component: derivedItems.find((item) => item.id === id)?.name || id,
-        Amount: amount,
-      })),
-      { Component: '', Amount: '' },
-      {
-        Component: 'Total Cash Compensation',
-        Amount: result.tcc,
-      },
-    ];
-
-    const totalsSheet = XLSX.utils.json_to_sheet(totalsData);
-    XLSX.utils.book_append_sheet(workbook, totalsSheet, 'Totals');
-
-    // Sheet 3: Inputs - Periods
-    const periodsData = periods.map((period) => ({
-      'Start Date': period.startDate,
-      'End Date': period.endDate,
-      'Base Salary': period.baseSalary,
-      ...Object.fromEntries(
-        componentKeys.map((key) => [
-          `${titleCase(key)} FTE`,
-          period.splits[key] || 0,
-        ])
-      ),
-    }));
-
-    const periodsSheet = XLSX.utils.json_to_sheet(periodsData);
-    XLSX.utils.book_append_sheet(workbook, periodsSheet, 'Inputs-Periods');
-
-    // Sheet 4: Inputs - Incentives
-    const incentivesData = derivedItems.map((item) => ({
-      Name: item.name,
-      'Source Component': titleCase(item.sourceComponent),
-      'Percent of Source': item.percentOfSource,
-      Floor: item.floor || '',
-      Cap: item.cap || '',
-    }));
-
-    const incentivesSheet = XLSX.utils.json_to_sheet(incentivesData);
-    XLSX.utils.book_append_sheet(workbook, incentivesSheet, 'Inputs-Incentives');
-
-    // Apply currency formatting to relevant columns
-    const currencyColumns = ['Base Salary', 'Total $', 'Amount'];
-    componentKeys.forEach((key) => {
-      currencyColumns.push(`${titleCase(key)} $`);
+    // Sheet 1: Breakdown with beautiful formatting
+    const titleRow1 = { A1: 'Total Cash Compensation - Proration Analysis' };
+    const titleRow2 = { A2: `Calendar Year ${year} - Generated on ${new Date().toLocaleDateString()}` };
+    
+    // Add 2 empty rows for spacing
+    const emptyRow3 = { A3: '' };
+    const emptyRow4 = { A4: '' };
+    
+    // Table headers start at row 5
+    const breakdownData = result.breakdown.map((row, index) => {
+      const dataRow: Record<string, any> = {};
+      dataRow[`A${index + 5}`] = formatDate(row.startDate);
+      dataRow[`B${index + 5}`] = formatDate(row.endDate);
+      dataRow[`C${index + 5}`] = row.days;
+      dataRow[`D${index + 5}`] = row.baseSalary;
+      
+      // Add component FTE columns
+      componentKeys.forEach((key, colIndex) => {
+        const colLetter = String.fromCharCode(69 + colIndex); // E, F, G, etc.
+        dataRow[`${colLetter}${index + 5}`] = periods.find((p) => p.id === row.periodId)?.splits[key] || 0;
+      });
+      
+      // Add component $ columns
+      componentKeys.forEach((key, colIndex) => {
+        const colLetter = String.fromCharCode(69 + componentKeys.length + colIndex);
+        dataRow[`${colLetter}${index + 5}`] = row.componentAmounts[key] || 0;
+      });
+      
+      // Add total $ column
+      const totalColLetter = String.fromCharCode(69 + componentKeys.length * 2);
+      dataRow[`${totalColLetter}${index + 5}`] = row.totalAmount;
+      
+      return dataRow;
     });
 
-    // Format currency columns in all sheets
-    [breakdownSheet, totalsSheet, periodsSheet].forEach((sheet) => {
-      const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
-      for (let col = range.s.c; col <= range.e.c; col++) {
-        const colLetter = XLSX.utils.encode_col(col);
-        const headerCell = sheet[`${colLetter}1`];
-        if (headerCell && currencyColumns.includes(headerCell.v)) {
-          for (let row = range.s.r + 1; row <= range.e.r; row++) {
-            const cell = sheet[`${colLetter}${row + 1}`];
-            if (cell && typeof cell.v === 'number') {
-              cell.z = '"$"#,##0.00';
-            }
+    // Add totals row
+    const totalsRowIndex = result.breakdown.length + 5;
+    const totalsRow: Record<string, any> = {};
+    totalsRow[`A${totalsRowIndex}`] = 'TOTALS';
+    totalsRow[`B${totalsRowIndex}`] = '';
+    totalsRow[`C${totalsRowIndex}`] = totalDays; // Use properly calculated total days
+    totalsRow[`D${totalsRowIndex}`] = ''; // Don't sum base salary
+    
+    // Add component FTE totals (empty)
+    componentKeys.forEach((key, colIndex) => {
+      const colLetter = String.fromCharCode(69 + colIndex);
+      totalsRow[`${colLetter}${totalsRowIndex}`] = '';
+    });
+    
+    // Add component $ totals
+    componentKeys.forEach((key, colIndex) => {
+      const colLetter = String.fromCharCode(69 + componentKeys.length + colIndex);
+      totalsRow[`${colLetter}${totalsRowIndex}`] = result.totalsByComponent[key] || 0;
+    });
+    
+    // Add total $ column
+    const totalColLetter = String.fromCharCode(69 + componentKeys.length * 2);
+    totalsRow[`${totalColLetter}${totalsRowIndex}`] = Object.values(result.totalsByComponent).reduce(
+      (sum: number, amount: number) => sum + amount, 0
+    );
+
+    // Combine all data
+    const allData = { ...titleRow1, ...titleRow2, ...emptyRow3, ...emptyRow4, ...breakdownData[0], ...totalsRow };
+    
+    // Create column headers
+    const headerRow: Record<string, any> = {};
+    headerRow['A4'] = 'Start Date';
+    headerRow['B4'] = 'End Date';
+    headerRow['C4'] = 'Days';
+    headerRow['D4'] = 'Base Salary';
+    
+    componentKeys.forEach((key, colIndex) => {
+      const colLetter = String.fromCharCode(69 + colIndex);
+      headerRow[`${colLetter}4`] = `${titleCase(key)} FTE`;
+    });
+    
+    componentKeys.forEach((key, colIndex) => {
+      const colLetter = String.fromCharCode(69 + componentKeys.length + colIndex);
+      headerRow[`${colLetter}4`] = `${titleCase(key)} $`;
+    });
+    
+    const totalHeaderColLetter = String.fromCharCode(69 + componentKeys.length * 2);
+    headerRow[`${totalHeaderColLetter}4`] = 'Total $';
+
+    const breakdownSheet = XLSX.utils.aoa_to_sheet([
+      ['Total Cash Compensation - Proration Analysis'],
+      [`Calendar Year ${year} - Generated on ${new Date().toLocaleDateString()}`],
+      [],
+      [],
+      [
+        'Start Date', 'End Date', 'Days', 'Base Salary',
+        ...componentKeys.map(key => `${titleCase(key)} FTE`),
+        ...componentKeys.map(key => `${titleCase(key)} $`),
+        'Total $'
+      ],
+      ...result.breakdown.map((row) => [
+        formatDate(row.startDate),
+        formatDate(row.endDate),
+        row.days,
+        row.baseSalary,
+        ...componentKeys.map((key) => periods.find((p) => p.id === row.periodId)?.splits[key] || 0),
+        ...componentKeys.map((key) => row.componentAmounts[key] || 0),
+        row.totalAmount,
+      ]),
+      [
+        'TOTALS',
+        '',
+        totalDays, // Use properly calculated total days
+        '', // Don't sum base salary
+        ...componentKeys.map(() => ''),
+        ...componentKeys.map((key) => result.totalsByComponent[key] || 0),
+        Object.values(result.totalsByComponent).reduce((sum: number, amount: number) => sum + amount, 0)
+      ]
+    ]);
+
+    // Apply beautiful formatting
+    breakdownSheet['!cols'] = [
+      { width: 12 }, // Start Date
+      { width: 12 }, // End Date
+      { width: 8 },  // Days
+      { width: 15 }, // Base Salary
+      ...componentKeys.map(() => ({ width: 12 })), // FTE columns
+      ...componentKeys.map(() => ({ width: 15 })), // $ columns
+      { width: 15 }  // Total $
+    ];
+
+    // Style the title and subtitle
+    if (breakdownSheet['A1']) {
+      breakdownSheet['A1'].s = {
+        font: { bold: true, size: 16, color: { rgb: '1976d2' } },
+        alignment: { horizontal: 'center' }
+      };
+    }
+    if (breakdownSheet['A2']) {
+      breakdownSheet['A2'].s = {
+        font: { size: 12, color: { rgb: '666666' } },
+        alignment: { horizontal: 'center' }
+      };
+    }
+
+    // Style the header row
+    for (let col = 0; col < 4 + componentKeys.length * 2 + 1; col++) {
+      const cellRef = XLSX.utils.encode_cell({ r: 3, c: col });
+      if (breakdownSheet[cellRef]) {
+        breakdownSheet[cellRef].s = {
+          font: { bold: true, color: { rgb: 'ffffff' } },
+          fill: { fgColor: { rgb: '1976d2' } },
+          alignment: { horizontal: 'center' },
+          border: {
+            top: { style: 'thin' },
+            bottom: { style: 'thin' },
+            left: { style: 'thin' },
+            right: { style: 'thin' }
           }
+        };
+      }
+    }
+
+    // Style data rows
+    for (let row = 4; row < 4 + result.breakdown.length + 1; row++) {
+      for (let col = 0; col < 4 + componentKeys.length * 2 + 1; col++) {
+        const cellRef = XLSX.utils.encode_cell({ r: row, c: col });
+        if (breakdownSheet[cellRef]) {
+          breakdownSheet[cellRef].s = {
+            border: {
+              top: { style: 'thin' },
+              bottom: { style: 'thin' },
+              left: { style: 'thin' },
+              right: { style: 'thin' }
+            },
+            alignment: { horizontal: col < 3 ? 'center' : 'right' }
+          };
+          
+          // Style totals row
+          if (row === 3 + result.breakdown.length + 1) {
+            breakdownSheet[cellRef].s.font = { bold: true };
+            breakdownSheet[cellRef].s.fill = { fgColor: { rgb: 'f0f0f0' } };
+          }
+        }
+      }
+    }
+
+    // Apply currency formatting
+    const currencyColumns = [3]; // Base Salary column
+    componentKeys.forEach((_, index) => {
+      currencyColumns.push(4 + componentKeys.length + index); // $ columns
+    });
+    currencyColumns.push(4 + componentKeys.length * 2); // Total $ column
+
+    currencyColumns.forEach(colIndex => {
+      for (let row = 4; row < 4 + result.breakdown.length + 1; row++) {
+        const cellRef = XLSX.utils.encode_cell({ r: row, c: colIndex });
+        if (breakdownSheet[cellRef] && typeof breakdownSheet[cellRef].v === 'number') {
+          breakdownSheet[cellRef].z = '"$"#,##0.00';
         }
       }
     });
 
+    XLSX.utils.book_append_sheet(workbook, breakdownSheet, 'Breakdown');
+
+    // Sheet 2: Totals (simplified for now)
+    const totalsData = [
+      ['Component Totals'],
+      [],
+      ...componentKeys.map((key) => [titleCase(key), result.totalsByComponent[key] || 0]),
+      [],
+      ['Additional Incentives'],
+      [],
+      ...Object.entries(result.derivedTotals).map(([id, amount]) => [
+        derivedItems.find((item) => item.id === id)?.name || id, amount
+      ]),
+      [],
+      ['Total Cash Compensation', result.tcc]
+    ];
+
+    const totalsSheet = XLSX.utils.aoa_to_sheet(totalsData);
+    XLSX.utils.book_append_sheet(workbook, totalsSheet, 'Totals');
+
     // Save the file
     const filename = `TotalCashComp_Prorate_${year}.xlsx`;
     XLSX.writeFile(workbook, filename);
+  };
+
+  const handleExportToPDF = async () => {
+    if (!pdfRef.current) return;
+
+    try {
+      // Create a new PDF document
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 20;
+      const contentWidth = pageWidth - (margin * 2);
+      
+      let yPosition = margin;
+
+      // Title
+      pdf.setFontSize(24);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(25, 118, 210); // Blue color
+      const title = 'Total Cash Compensation - Proration Analysis';
+      const titleWidth = pdf.getTextWidth(title);
+      pdf.text(title, (pageWidth - titleWidth) / 2, yPosition);
+      yPosition += 15;
+
+      // Subtitle
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(102, 102, 102); // Gray color
+      const subtitle = `Calendar Year ${year} - Generated on ${new Date().toLocaleDateString()}`;
+      const subtitleWidth = pdf.getTextWidth(subtitle);
+      pdf.text(subtitle, (pageWidth - subtitleWidth) / 2, yPosition);
+      yPosition += 20;
+
+      // Summary Section
+      pdf.setFontSize(16);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(0, 0, 0);
+      pdf.text('Summary', margin, yPosition);
+      yPosition += 10;
+
+      // Summary table
+      const summaryData = [
+        ['Component', 'Amount'],
+        ...derivedComponentKeys.map(key => [
+          key === 'medical_director' ? 'Medical Director' : 
+          key === 'division_chief' ? 'Division Chief' : 
+          titleCase(key),
+          formatCurrency(result.totalsByComponent[key] || 0)
+        ]),
+        ['Additional Incentives', formatCurrency(Object.values(result.derivedTotals).reduce((sum, amount) => sum + amount, 0))],
+        ['Total Cash Compensation', formatCurrency(result.tcc)]
+      ];
+
+      // Calculate column widths
+      const col1Width = 80;
+      const col2Width = 60;
+      const tableX = margin;
+
+      // Draw summary table
+      pdf.setFontSize(10);
+      pdf.setFont('helvetica', 'bold');
+      
+      // Header row
+      pdf.setFillColor(25, 118, 210);
+      pdf.setTextColor(255, 255, 255);
+      pdf.rect(tableX, yPosition - 5, col1Width + col2Width, 8, 'F');
+      pdf.text('Component', tableX + 2, yPosition);
+      pdf.text('Amount', tableX + col1Width + 2, yPosition);
+      yPosition += 8;
+
+      // Data rows
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFillColor(248, 249, 250);
+
+      summaryData.slice(1).forEach((row, index) => {
+        const isLastRow = index === summaryData.length - 2;
+        const bgColor = isLastRow ? [220, 237, 200] : [248, 249, 250];
+        pdf.setFillColor(bgColor[0], bgColor[1], bgColor[2]);
+        pdf.rect(tableX, yPosition - 5, col1Width + col2Width, 6, 'F');
+        pdf.text(row[0], tableX + 2, yPosition);
+        pdf.text(row[1], tableX + col1Width + 2, yPosition);
+        yPosition += 6;
+      });
+
+      yPosition += 15;
+
+      // Check if we need a new page for the breakdown
+      if (yPosition > pageHeight - 100) {
+        pdf.addPage();
+        yPosition = margin;
+      }
+
+      // Breakdown Section
+      pdf.setFontSize(16);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setTextColor(0, 0, 0);
+      pdf.text('Period Breakdown', margin, yPosition);
+      yPosition += 10;
+
+      // Calculate total days properly
+      const uniquePeriods = new Map<string, { startDate: string; endDate: string }>();
+      periods.forEach(period => {
+        const key = `${period.startDate}-${period.endDate}`;
+        if (!uniquePeriods.has(key)) {
+          uniquePeriods.set(key, { startDate: period.startDate, endDate: period.endDate });
+        }
+      });
+      const totalDays = Array.from(uniquePeriods.values()).reduce((sum, period) => 
+        sum + dayCountInclusive(period.startDate, period.endDate), 0
+      );
+
+      // Breakdown table headers
+      const breakdownHeaders = [
+        'Start Date', 'End Date', 'Days', 'Base Salary',
+        ...componentKeys.map(key => `${titleCase(key)} FTE`),
+        ...componentKeys.map(key => `${titleCase(key)} $`),
+        'Total $'
+      ];
+
+      // Calculate breakdown column widths
+      const breakdownColWidths = [
+        25, // Start Date
+        25, // End Date
+        15, // Days
+        30, // Base Salary
+        ...componentKeys.map(() => 20), // FTE columns
+        ...componentKeys.map(() => 25), // $ columns
+        25  // Total $
+      ];
+
+      const totalBreakdownWidth = breakdownColWidths.reduce((sum, width) => sum + width, 0);
+      const breakdownTableX = margin;
+
+      // Draw breakdown table header
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFillColor(25, 118, 210);
+      pdf.setTextColor(255, 255, 255);
+      pdf.rect(breakdownTableX, yPosition - 5, totalBreakdownWidth, 6, 'F');
+
+      let currentX = breakdownTableX;
+      breakdownHeaders.forEach((header, index) => {
+        pdf.text(header, currentX + 1, yPosition);
+        currentX += breakdownColWidths[index];
+      });
+      yPosition += 6;
+
+      // Draw breakdown data rows
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFillColor(255, 255, 255);
+
+      result.breakdown.forEach((row, index) => {
+        // Check if we need a new page
+        if (yPosition > pageHeight - 30) {
+          pdf.addPage();
+          yPosition = margin;
+        }
+
+        const rowData = [
+          formatDate(row.startDate),
+          formatDate(row.endDate),
+          row.days.toString(),
+          formatCurrency(row.baseSalary),
+          ...componentKeys.map((key) => (periods.find((p) => p.id === row.periodId)?.splits[key] || 0).toString()),
+          ...componentKeys.map((key) => formatCurrency(row.componentAmounts[key] || 0)),
+          formatCurrency(row.totalAmount)
+        ];
+
+        currentX = breakdownTableX;
+        rowData.forEach((cellData, cellIndex) => {
+          pdf.text(cellData, currentX + 1, yPosition);
+          currentX += breakdownColWidths[cellIndex];
+        });
+        yPosition += 5;
+      });
+
+      // Draw totals row
+      yPosition += 2;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFillColor(240, 240, 240);
+      pdf.rect(breakdownTableX, yPosition - 5, totalBreakdownWidth, 6, 'F');
+
+      const totalsData = [
+        'TOTALS',
+        '',
+        totalDays.toString(),
+        '',
+        ...componentKeys.map(() => ''),
+        ...componentKeys.map((key) => formatCurrency(result.totalsByComponent[key] || 0)),
+        formatCurrency(Object.values(result.totalsByComponent).reduce((sum: number, amount: number) => sum + amount, 0))
+      ];
+
+      currentX = breakdownTableX;
+      totalsData.forEach((cellData, cellIndex) => {
+        pdf.text(cellData, currentX + 1, yPosition);
+        currentX += breakdownColWidths[cellIndex];
+      });
+
+      // Save the PDF
+      const filename = `TotalCashComp_Prorate_${year}.pdf`;
+      pdf.save(filename);
+
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error generating PDF. Please try again.');
+    }
   };
 
   return (
@@ -378,7 +703,7 @@ function App() {
       </div>
 
       {/* Main Content */}
-      <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+      <div ref={pdfRef} style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {/* Action Buttons */}
           <div style={{ 
@@ -533,6 +858,33 @@ function App() {
               }}
             >
               Export to Excel
+            </button>
+            <button
+              onClick={handleExportToPDF}
+              disabled={!validation.ok}
+              style={{
+                backgroundColor: !validation.ok ? '#d1d5db' : '#dc2626',
+                color: 'white',
+                border: '1px solid #b91c1c',
+                padding: '8px 16px',
+                borderRadius: '4px',
+                cursor: !validation.ok ? 'not-allowed' : 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                if (validation.ok) {
+                  e.currentTarget.style.backgroundColor = '#b91c1c';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (validation.ok) {
+                  e.currentTarget.style.backgroundColor = '#dc2626';
+                }
+              }}
+            >
+              Export to PDF
             </button>
           </div>
 
