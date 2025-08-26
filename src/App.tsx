@@ -1601,9 +1601,10 @@ function App() {
                                   <span style={{ 
                                     color: colors.onSurfaceVariant, 
                                     fontSize: '0.875rem',
-                                    fontWeight: 500
+                                    fontWeight: 400,
+                                    marginLeft: '12px'
                                   }}>
-                                    {formatCurrency(componentAmount)}
+                                    ({formatCurrency(componentAmount)})
                                   </span>
                                 </label>
                               );
