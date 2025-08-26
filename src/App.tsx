@@ -812,11 +812,11 @@ function App() {
                     }}>Base Salary</th>
                     <th style={{ 
                       padding: '12px', 
-                      textAlign: 'center', 
+                      textAlign: 'left', 
                       ...typography.labelLarge,
                       color: colors.onSurface,
                       border: 'none'
-                    }}>Type</th>
+                    }}>FTE Type</th>
                     <th style={{ 
                       padding: '12px', 
                       textAlign: 'right', 
@@ -1500,25 +1500,12 @@ function App() {
                                 const isVisible = currentOpen.style.display === 'block';
                                 currentOpen.style.display = isVisible ? 'none' : 'block';
                                 
-                                // Check if dropdown would be cut off at bottom
+                                // Always position dropdown above the button
                                 if (!isVisible) {
                                   setTimeout(() => {
-                                    const rect = currentOpen.getBoundingClientRect();
-                                    const viewportHeight = window.innerHeight;
-                                    const spaceBelow = viewportHeight - rect.bottom;
-                                    const spaceAbove = rect.top;
-                                    
-                                    if (spaceBelow < 200 && spaceAbove > 200) {
-                                      // Position above if more space above
-                                      currentOpen.style.top = 'auto';
-                                      currentOpen.style.bottom = '100%';
-                                      currentOpen.style.transform = 'translateY(-4px)';
-                                    } else {
-                                      // Position below
-                                      currentOpen.style.top = '100%';
-                                      currentOpen.style.bottom = 'auto';
-                                      currentOpen.style.transform = 'translateY(4px)';
-                                    }
+                                    currentOpen.style.top = 'auto';
+                                    currentOpen.style.bottom = '100%';
+                                    currentOpen.style.transform = 'translateY(-4px)';
                                   }, 10);
                                 }
                               }
@@ -1556,7 +1543,7 @@ function App() {
                               border: `1px solid ${colors.outlineVariant}`,
                               borderRadius: '4px',
                               boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                              zIndex: 1000,
+                              zIndex: 9999,
                               display: 'none',
                               maxHeight: '200px',
                               overflowY: 'auto',
@@ -1798,7 +1785,7 @@ function App() {
             borderRadius: '8px',
             border: `1px solid ${colors.outlineVariant}`,
             boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-            overflow: 'hidden'
+            overflow: 'visible'
           }}>
         {/* Header */}
         <div style={{
@@ -1840,7 +1827,17 @@ function App() {
                   onClick={() => {
                     const currentOpen = document.getElementById('target-dropdown');
                     if (currentOpen) {
-                      currentOpen.style.display = currentOpen.style.display === 'block' ? 'none' : 'block';
+                      const isVisible = currentOpen.style.display === 'block';
+                      currentOpen.style.display = isVisible ? 'none' : 'block';
+                      
+                      // Always position dropdown above the button
+                      if (!isVisible) {
+                        setTimeout(() => {
+                          currentOpen.style.top = 'auto';
+                          currentOpen.style.bottom = '100%';
+                          currentOpen.style.transform = 'translateY(-4px)';
+                        }, 10);
+                      }
                     }
                   }}
                   style={{
@@ -1869,18 +1866,18 @@ function App() {
                   id="target-dropdown"
                   style={{
                     position: 'absolute',
-                    top: '100%',
+                    bottom: '100%',
                     left: 0,
                     minWidth: '300px',
                     backgroundColor: colors.surface,
                     border: `1px solid ${colors.outlineVariant}`,
                     borderRadius: '4px',
                     boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                    zIndex: 1000,
+                    zIndex: 9999,
                     display: 'none',
                     maxHeight: '200px',
                     overflowY: 'auto',
-                    transform: 'translateY(4px)'
+                    transform: 'translateY(-4px)'
                   }}
                   onMouseLeave={() => {
                     setTimeout(() => {
@@ -1955,23 +1952,31 @@ function App() {
                 display: 'block', 
                 ...typography.labelMedium,
                 color: colors.onSurfaceVariant, 
-                marginBottom: '4px' 
+                marginBottom: '4px',
+                textAlign: 'left'
               }}>
                 Conversion Factor ($)
               </label>
               <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={conversionFactor}
-                onChange={(e) => setConversionFactor(parseFloat(e.target.value) || 0)}
+                type="text"
+                value={conversionFactor === 0 ? '' : conversionFactor.toString()}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/[^0-9.]/g, '');
+                  const parsed = parseFloat(value) || 0;
+                  setConversionFactor(parsed);
+                }}
+                onBlur={(e) => {
+                  const value = parseFloat(e.target.value) || 0;
+                  setConversionFactor(value);
+                }}
                 placeholder="e.g., 50.00"
                 style={{
                   border: `1px solid ${colors.outlineVariant}`,
                   borderRadius: '4px',
                   padding: '8px 12px',
                   ...typography.bodyMedium,
-                  width: '100%'
+                  width: '100%',
+                  textAlign: 'left'
                 }}
               />
             </div>
@@ -1981,7 +1986,8 @@ function App() {
                 display: 'block', 
                 ...typography.labelMedium,
                 color: colors.onSurfaceVariant, 
-                marginBottom: '4px' 
+                marginBottom: '4px',
+                textAlign: 'left'
               }}>
                 Calculated Target
               </label>
@@ -1993,11 +1999,14 @@ function App() {
                 ...typography.bodyMedium,
                 fontWeight: 600,
                 color: colors.onSurface,
-                textAlign: 'right'
+                textAlign: 'left'
               }}>
                 {targetComponents.length > 0 && conversionFactor > 0
-                  ? Math.round(targetComponents.reduce((sum, key) => sum + (result.totalsByComponent[key] || 0), 0) / conversionFactor)
-                  : '0'
+                  ? (targetComponents.reduce((sum, key) => sum + (result.totalsByComponent[key] || 0), 0) / conversionFactor).toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2
+                    })
+                  : '0.00'
                 }
               </div>
             </div>
@@ -2012,7 +2021,7 @@ function App() {
               ...typography.bodySmall,
               color: colors.onPrimaryContainer
             }}>
-              <strong>Calculation:</strong> {formatCurrency(targetComponents.reduce((sum, key) => sum + (result.totalsByComponent[key] || 0), 0))} ÷ ${conversionFactor.toFixed(2)} = {Math.round(targetComponents.reduce((sum, key) => sum + (result.totalsByComponent[key] || 0), 0) / conversionFactor)} target units
+              <strong>Calculation:</strong> {formatCurrency(targetComponents.reduce((sum, key) => sum + (result.totalsByComponent[key] || 0), 0))} ÷ ${conversionFactor.toFixed(2)} = {(targetComponents.reduce((sum, key) => sum + (result.totalsByComponent[key] || 0), 0) / conversionFactor).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} target units
             </div>
           )}
         </div>
