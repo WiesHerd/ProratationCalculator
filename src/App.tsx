@@ -1800,8 +1800,7 @@ function App() {
         borderRadius: '8px',
         border: `1px solid ${colors.outlineVariant}`,
         boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-        overflow: 'hidden',
-        marginBottom: '24px'
+        overflow: 'hidden'
       }}>
         {/* Header */}
         <div style={{
