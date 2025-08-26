@@ -23,6 +23,12 @@ export type DerivedItem = {
   percentOfSource: number;
   cap?: number;
   floor?: number;
+  // wRVU incentive fields
+  isWrvuIncentive?: boolean;
+  actualWrvus?: number;
+  actualWrvusStr?: string;
+  targetWrvus?: number;
+  wrvuConversionFactor?: number;
 };
 
 export type ValidationError = {
@@ -221,24 +227,35 @@ export function computeDerived(
   const derivedTotals: Record<string, number> = {};
 
   derivedItems.forEach(item => {
-    // Handle multiple source components (comma-separated)
-    const sourceComponents = item.sourceComponent.split(',').filter(s => s.trim());
-    let totalSourceAmount = 0;
-    
-    sourceComponents.forEach(component => {
-      totalSourceAmount += totalsByComponent[component.trim()] || 0;
-    });
-    
-    let derivedAmount = totalSourceAmount * (item.percentOfSource / 100);
+    let derivedAmount = 0;
 
-    // Apply floor
-    if (item.floor !== undefined && derivedAmount < item.floor) {
-      derivedAmount = item.floor;
-    }
+    if (item.isWrvuIncentive && item.actualWrvus !== undefined && item.targetWrvus !== undefined && item.wrvuConversionFactor !== undefined) {
+      // wRVU incentive calculation
+      if (item.actualWrvus > item.targetWrvus) {
+        derivedAmount = item.wrvuConversionFactor * (item.actualWrvus - item.targetWrvus);
+      }
+      // If actual <= target, incentive is 0
+    } else {
+      // Regular percentage-based incentive calculation
+      // Handle multiple source components (comma-separated)
+      const sourceComponents = item.sourceComponent.split(',').filter(s => s.trim());
+      let totalSourceAmount = 0;
+      
+      sourceComponents.forEach(component => {
+        totalSourceAmount += totalsByComponent[component.trim()] || 0;
+      });
+      
+      derivedAmount = totalSourceAmount * (item.percentOfSource / 100);
 
-    // Apply cap
-    if (item.cap !== undefined && derivedAmount > item.cap) {
-      derivedAmount = item.cap;
+      // Apply floor
+      if (item.floor !== undefined && derivedAmount < item.floor) {
+        derivedAmount = item.floor;
+      }
+
+      // Apply cap
+      if (item.cap !== undefined && derivedAmount > item.cap) {
+        derivedAmount = item.cap;
+      }
     }
 
     derivedTotals[item.id] = derivedAmount;

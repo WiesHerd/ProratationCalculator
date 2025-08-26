@@ -358,13 +358,13 @@ function App() {
       ...result.breakdown.map((row) => {
         const period = periods.find((p) => p.id === row.periodId);
         return [
-          formatDate(row.startDate),
-          formatDate(row.endDate),
-          row.days,
-          row.baseSalary,
+        formatDate(row.startDate),
+        formatDate(row.endDate),
+        row.days,
+        row.baseSalary,
           ...allComponentKeys.map((key) => period?.splits[key] || 0),
           ...allComponentKeys.map((key) => row.componentAmounts[key] || 0),
-          row.totalAmount,
+        row.totalAmount,
         ];
       }),
       [
@@ -401,17 +401,46 @@ function App() {
       ['Additional Incentives'],
       [`Calendar Year ${year} - Generated on ${new Date().toLocaleDateString()}`],
       [],
-      ['Name', 'FTE Type', 'Percent', 'Calculated Amount']
+      ['Name', 'FTE Type', 'Percent/Target', 'Actual/CF', 'Calculated Amount']
     ];
 
     if (derivedItems.length > 0) {
       derivedItems.forEach(item => {
-        incentivesData.push([
-          item.name,
-          item.sourceComponent || 'All',
-          `${item.percentOfSource}%`,
-          (result.derivedTotals[item.id] || 0).toString()
-        ]);
+        if (item.isWrvuIncentive) {
+          // wRVU incentive
+          incentivesData.push([
+            item.name,
+            'wRVUs',
+            item.targetWrvus?.toLocaleString('en-US', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            }) || '0.00',
+            `${item.actualWrvusStr || (item.actualWrvus || 0).toLocaleString('en-US', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            })} / $${item.wrvuConversionFactor || 0}`,
+            (result.derivedTotals[item.id] || 0).toLocaleString('en-US', {
+              style: 'currency',
+              currency: 'USD',
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            })
+          ]);
+        } else {
+          // Regular percentage incentive
+          incentivesData.push([
+            item.name,
+            item.sourceComponent || 'All',
+            `${item.percentOfSource}%`,
+            'N/A',
+            (result.derivedTotals[item.id] || 0).toLocaleString('en-US', {
+              style: 'currency',
+              currency: 'USD',
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            })
+          ]);
+        }
       });
     } else {
       incentivesData.push(['No additional incentives configured']);
@@ -421,12 +450,13 @@ function App() {
     incentivesSheet['!cols'] = [
       { width: 20 }, // Name
       { width: 15 }, // FTE Type
-      { width: 12 }, // Percent
+      { width: 15 }, // Percent/Target
+      { width: 15 }, // Actual/CF
       { width: 18 }  // Calculated Amount
     ];
 
-    // Style incentives sheet - column 3 (Calculated Amount) should be currency formatted
-    applySheetStyling(incentivesSheet, 0, 3, 4, [3]);
+    // Style incentives sheet - column 4 (Calculated Amount) should be currency formatted
+    applySheetStyling(incentivesSheet, 0, 3, 5, [4]);
 
     XLSX.utils.book_append_sheet(workbook, incentivesSheet, 'Additional Incentives');
 
@@ -599,7 +629,7 @@ function App() {
               
               if (isCurrencyColumn) {
                 sheet[cellRef].z = '"$"#,##0.00';
-              } else {
+            } else {
                 // Non-currency columns: Days, FTE values - use number format
                 sheet[cellRef].z = '#,##0.00';
               }
@@ -1747,7 +1777,7 @@ function App() {
                     borderRadius: '8px',
                     backgroundColor: index % 2 === 0 ? colors.surface : colors.neutral[50]
                   }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto', gap: '16px', alignItems: 'end' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: item.isWrvuIncentive ? '1fr 1fr 1fr 1fr 1fr 1fr auto' : '1fr 1fr 1fr 1fr auto', gap: '16px', alignItems: 'end' }}>
                       <div>
                         <label style={{ 
                           display: 'block', 
@@ -1817,9 +1847,11 @@ function App() {
                             }}
                           >
                             <span style={{ color: colors.onSurfaceVariant }}>
-                              {item.sourceComponent.split(',').filter(s => s.trim()).length > 0 
-                                ? `${item.sourceComponent.split(',').filter(s => s.trim()).length} selected`
-                                : 'Select components...'
+                              {item.isWrvuIncentive 
+                                ? 'wRVUs'
+                                : item.sourceComponent.split(',').filter(s => s.trim()).length > 0 
+                                  ? `${item.sourceComponent.split(',').filter(s => s.trim()).length} selected`
+                                  : 'Select components...'
                               }
                             </span>
                             <span style={{ ...typography.labelSmall, color: colors.onSurfaceVariant }}>▼</span>
@@ -1851,8 +1883,91 @@ function App() {
                               }, 100);
                             }}
                           >
+                            {/* wRVU Option */}
+                            <label
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                ...typography.bodyMedium,
+                                borderBottom: `1px solid ${colors.outlineVariant}`,
+                                backgroundColor: item.isWrvuIncentive ? colors.surfaceVariant : colors.surface
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor = item.isWrvuIncentive ? colors.primaryContainer : colors.surfaceVariant;
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = item.isWrvuIncentive ? colors.surfaceVariant : colors.surface;
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={item.isWrvuIncentive || false}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      // Switch to wRVU mode
+                                                                              setDerivedItems(derivedItems.map(i => 
+                                          i.id === item.id ? { 
+                                            ...i, 
+                                            isWrvuIncentive: true,
+                                            sourceComponent: '',
+                                            percentOfSource: 0,
+                                            actualWrvus: 0,
+                                            actualWrvusStr: '0.00',
+                                            targetWrvus: targetCalculatorItems.length > 0 ? (() => {
+                                              const item = targetCalculatorItems[0];
+                                              if (item.useCustomAmount) {
+                                                return item.customAmount;
+                                              } else {
+                                                const sourceAmount = item.targetComponents.reduce((sum, component) => {
+                                                  return sum + (result.totalsByComponent[component] || 0);
+                                                }, 0);
+                                                return sourceAmount / item.conversionFactor;
+                                              }
+                                            })() : 0,
+                                            wrvuConversionFactor: targetCalculatorItems.length > 0 ? targetCalculatorItems[0].conversionFactor || 0 : 0
+                                          } : i
+                                        ));
+                                    } else {
+                                      // Switch back to regular mode
+                                                                              setDerivedItems(derivedItems.map(i => 
+                                          i.id === item.id ? { 
+                                            ...i, 
+                                            isWrvuIncentive: false,
+                                            actualWrvus: undefined,
+                                            actualWrvusStr: undefined,
+                                            targetWrvus: undefined,
+                                            wrvuConversionFactor: undefined
+                                          } : i
+                                        ));
+                                    }
+                                  }}
+                                  style={{
+                                    marginRight: '8px',
+                                    width: '16px',
+                                    height: '16px',
+                                    accentColor: colors.primary
+                                  }}
+                                />
+                                <span>wRVUs</span>
+                              </div>
+                              <span style={{ 
+                                color: colors.onSurfaceVariant, 
+                                fontSize: '0.75rem',
+                                fontWeight: 400,
+                                marginLeft: '12px',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                (Productivity)
+                              </span>
+                            </label>
+                            
+                            {/* Regular Component Options */}
                             {derivedComponentKeys.map((key) => {
-                              const isSelected = item.sourceComponent.split(',').filter(s => s.trim()).includes(key);
+                              const isSelected = !item.isWrvuIncentive && item.sourceComponent.split(',').filter(s => s.trim()).includes(key);
                               const componentAmount = result.totalsByComponent[key] || 0;
                               return (
                                 <label
@@ -1915,52 +2030,162 @@ function App() {
                         </div>
                       </div>
                       
-                      <div>
-                        <label style={{ 
-                          display: 'block', 
-                          ...typography.labelMedium,
-                          color: colors.onSurfaceVariant, 
-                          marginBottom: '4px' 
-                        }}>
-                          Percent
-                        </label>
-                        <div style={{ position: 'relative' }}>
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            max="100"
-                            value={item.percentOfSource}
-                            onChange={(e) => {
-                              const value = parseFloat(e.target.value) || 0;
-                              setDerivedItems(derivedItems.map(i => 
-                                i.id === item.id ? { ...i, percentOfSource: Math.min(100, Math.max(0, value)) } : i
-                              ));
-                            }}
-                            placeholder="5.0"
-                            style={{
+                      {item.isWrvuIncentive ? (
+                        // wRVU incentive fields
+                        <>
+                          <div>
+                            <label style={{ 
+                              display: 'block', 
+                              ...typography.labelMedium,
+                              color: colors.onSurfaceVariant, 
+                              marginBottom: '4px' 
+                            }}>
+                              Target wRVUs
+                            </label>
+                            <div style={{
                               border: `1px solid ${colors.outlineVariant}`,
                               borderRadius: '4px',
                               padding: '8px 12px',
-                              paddingRight: '32px',
                               ...typography.bodyMedium,
-                              width: '100%'
-                            }}
-                          />
-                          <div style={{
-                            position: 'absolute',
-                            right: '12px',
-                            top: '50%',
-                            transform: 'translateY(-50%)',
-                            color: colors.onSurfaceVariant,
-                            ...typography.bodyMedium,
-                            fontWeight: 500,
-                            pointerEvents: 'none'
+                              width: '100%',
+                              backgroundColor: colors.surfaceVariant,
+                              color: colors.onSurfaceVariant,
+                              minHeight: '38px',
+                              display: 'flex',
+                              alignItems: 'center'
+                            }}>
+                              {item.targetWrvus?.toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                              }) || '0.00'}
+                            </div>
+                          </div>
+                          
+                          <div>
+                            <label style={{ 
+                              display: 'block', 
+                              ...typography.labelMedium,
+                              color: colors.onSurfaceVariant, 
+                              marginBottom: '4px' 
+                            }}>
+                              Actual wRVUs
+                            </label>
+                            <input
+                              type="text"
+                              value={item.actualWrvusStr || (item.actualWrvus || 0).toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2
+                              })}
+                              onChange={(e) => {
+                                const value = e.target.value.replace(/[^\d.]/g, '');
+                                setDerivedItems(derivedItems.map(i => 
+                                  i.id === item.id ? { ...i, actualWrvusStr: value } : i
+                                ));
+                              }}
+                              onBlur={(e) => {
+                                const value = parseFloat(e.target.value.replace(/,/g, '')) || 0;
+                                setDerivedItems(derivedItems.map(i => 
+                                  i.id === item.id ? { 
+                                    ...i, 
+                                    actualWrvus: value,
+                                    actualWrvusStr: value.toLocaleString('en-US', {
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2
+                                    })
+                                  } : i
+                                ));
+                              }}
+                              placeholder="0.00"
+                              style={{
+                                border: `1px solid ${colors.outlineVariant}`,
+                                borderRadius: '4px',
+                                padding: '8px 12px',
+                                ...typography.bodyMedium,
+                                width: '100%'
+                              }}
+                            />
+                          </div>
+                          
+                          <div>
+                            <label style={{ 
+                              display: 'block', 
+                              ...typography.labelMedium,
+                              color: colors.onSurfaceVariant, 
+                              marginBottom: '4px' 
+                            }}>
+                              Conversion Factor
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={item.wrvuConversionFactor || 0}
+                              onChange={(e) => {
+                                const value = parseFloat(e.target.value) || 0;
+                                setDerivedItems(derivedItems.map(i => 
+                                  i.id === item.id ? { ...i, wrvuConversionFactor: value } : i
+                                ));
+                              }}
+                              placeholder="0.00"
+                              style={{
+                                border: `1px solid ${colors.outlineVariant}`,
+                                borderRadius: '4px',
+                                padding: '8px 12px',
+                                ...typography.bodyMedium,
+                                width: '100%'
+                              }}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        // Regular percentage field
+                        <div>
+                          <label style={{ 
+                            display: 'block', 
+                            ...typography.labelMedium,
+                            color: colors.onSurfaceVariant, 
+                            marginBottom: '4px' 
                           }}>
-                            %
+                            Percent
+                          </label>
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              max="100"
+                              value={item.percentOfSource}
+                              onChange={(e) => {
+                                const value = parseFloat(e.target.value) || 0;
+                                setDerivedItems(derivedItems.map(i => 
+                                  i.id === item.id ? { ...i, percentOfSource: Math.min(100, Math.max(0, value)) } : i
+                                ));
+                              }}
+                              placeholder="5.0"
+                              style={{
+                                border: `1px solid ${colors.outlineVariant}`,
+                                borderRadius: '4px',
+                                padding: '8px 12px',
+                                paddingRight: '32px',
+                                ...typography.bodyMedium,
+                                width: '100%'
+                              }}
+                            />
+                            <div style={{
+                              position: 'absolute',
+                              right: '12px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              color: colors.onSurfaceVariant,
+                              ...typography.bodyMedium,
+                              fontWeight: 500,
+                              pointerEvents: 'none'
+                            }}>
+                              %
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )}
                       
                       <div>
                         <label style={{ 
@@ -1984,12 +2209,23 @@ function App() {
                           alignItems: 'center'
                         }}>
                           {(() => {
-                            const sourceComponents = item.sourceComponent.split(',').filter(s => s.trim());
-                            const totalSourceAmount = sourceComponents.reduce((sum, component) => {
-                              return sum + (result.totalsByComponent[component] || 0);
-                            }, 0);
-                            const calculatedAmount = totalSourceAmount * (item.percentOfSource / 100);
-                            return formatCurrency(calculatedAmount);
+                            if (item.isWrvuIncentive && item.actualWrvus !== undefined && item.targetWrvus !== undefined && item.wrvuConversionFactor !== undefined) {
+                              // wRVU incentive calculation
+                              if (item.actualWrvus > item.targetWrvus) {
+                                const incentive = item.wrvuConversionFactor * (item.actualWrvus - item.targetWrvus);
+                                return formatCurrency(incentive);
+                              } else {
+                                return formatCurrency(0);
+                              }
+                            } else {
+                              // Regular percentage-based incentive calculation
+                              const sourceComponents = item.sourceComponent.split(',').filter(s => s.trim());
+                              const totalSourceAmount = sourceComponents.reduce((sum, component) => {
+                                return sum + (result.totalsByComponent[component] || 0);
+                              }, 0);
+                              const calculatedAmount = totalSourceAmount * (item.percentOfSource / 100);
+                              return formatCurrency(calculatedAmount);
+                            }
                           })()}
                         </div>
                       </div>

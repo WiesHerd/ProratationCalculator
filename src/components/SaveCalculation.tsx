@@ -133,6 +133,7 @@ export function SaveCalculation({ onSave, onClose, currentData }: SaveCalculatio
             <div>Year: {currentData.year}</div>
             <div>Periods: {currentData.periods.length}</div>
             <div>Components: {currentData.componentKeys.join(', ')}</div>
+            <div>Additional Incentives: {currentData.derivedItems.length}</div>
             <div>Target Calculators: {currentData.targetCalculatorItems.length}</div>
             <div>Total Cash Compensation: ${currentData.totals.tcc.toLocaleString()}</div>
           </div>
