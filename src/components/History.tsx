@@ -157,8 +157,8 @@ export function History({ onLoadCalculation, onClose }: HistoryProps) {
                     backgroundColor: selectedId === calc.id ? '#f0f8ff' : 'white'
                   }}
                   onClick={() => setSelectedId(calc.id)}
-                  onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)'}
-                  onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}
+                                          onMouseEnter={() => {}}
+                        onMouseLeave={() => {}}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                     <div>
@@ -171,7 +171,7 @@ export function History({ onLoadCalculation, onClose }: HistoryProps) {
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button
-                        onClick={(e) => handleLoad(calc)}
+                        onClick={() => handleLoad(calc)}
                         style={{
                           backgroundColor: '#1976d2',
                           color: 'white',

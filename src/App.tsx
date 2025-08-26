@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useIndexedDBState } from './hooks/useIndexedDBState';
 import { formatCurrency, parseCurrency, formatDate } from './lib/format';
 import { titleCase } from './lib/keys';
@@ -129,7 +129,7 @@ function App() {
   }, [periods]);
 
   // Validation and calculation - simplified to prevent loops
-  const validation = validateInputs(periods, year, derivedComponentKeys);
+  const validation = validateInputs(periods, year);
   const prorationResult = prorate(periods, year, derivedComponentKeys);
   const derivedTotals = computeDerived(prorationResult.totalsByComponent, derivedItems);
   const tcc = calculateTCC(prorationResult.totalsByComponent, derivedTotals);
@@ -198,7 +198,7 @@ function App() {
     }
   };
 
-  const handleSaveCalculation = (name: string) => {
+  const handleSaveCalculation = () => {
     setShowSaveModal(false);
     // The save is handled in the SaveCalculation component
   };
@@ -248,11 +248,11 @@ function App() {
     });
 
     totalsRow['Total $'] = Object.values(result.totalsByComponent).reduce(
-      (sum, amount) => sum + amount,
+      (sum: number, amount: number) => sum + amount,
       0
     );
 
-    breakdownData.push(totalsRow);
+    breakdownData.push(totalsRow as any);
 
     const breakdownSheet = XLSX.utils.json_to_sheet(breakdownData);
     XLSX.utils.book_append_sheet(workbook, breakdownSheet, 'Breakdown');
@@ -824,18 +824,17 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {periods.map((period, index) => {
+                  {periods.map((period) => {
                     const days = dayCountInclusive(period.startDate, period.endDate);
                     const daysInYearValue = daysInYear(2025);
                     const percentOfYear = ((days / daysInYearValue) * 100).toFixed(1);
-                    const totalFte = Object.values(period.splits).reduce((sum, fte) => sum + (fte ?? 0), 0);
+                    const totalFte = Object.values(period.splits).reduce((sum: number, fte: number | undefined) => sum + (fte ?? 0), 0);
                     const proratedSalary = (period.baseSalary * totalFte * days) / daysInYearValue;
                     
 
                     
                     // Get the currently selected component type for this period
-                    const selectedComponent = Object.keys(period.splits).find(key => period.splits[key] && period.splits[key]! > 0) || componentKeys[0] || 'clinical';
-                    const currentComponentFte = period.splits[selectedComponent] || 0;
+                    // const selectedComponent = Object.keys(period.splits).find(key => period.splits[key] && period.splits[key]! > 0) || componentKeys[0] || 'clinical';
                     
                     return (
                       <tr key={period.id} style={{ 
@@ -1117,8 +1116,8 @@ function App() {
                       color: colors.onSurface
                     }}>
                       {/* Total FTE - sum of all component FTEs */}
-                      {periods.reduce((sum, period) => {
-                        const periodFte = Object.values(period.splits).reduce((periodSum, fte) => periodSum + (fte || 0), 0);
+                      {periods.reduce((sum: number, period) => {
+                        const periodFte = Object.values(period.splits).reduce((periodSum: number, fte: number | undefined) => periodSum + (fte || 0), 0);
                         return sum + periodFte;
                       }, 0).toFixed(2)}
                     </td>
@@ -1168,10 +1167,10 @@ function App() {
                       fontWeight: 600,
                       color: colors.onSurface
                     }}>
-                      {formatCurrency(periods.reduce((sum, period) => {
+                      {formatCurrency(periods.reduce((sum: number, period) => {
                         const days = dayCountInclusive(period.startDate, period.endDate);
                         const daysInYearValue = daysInYear(2025);
-                        const totalFte = Object.values(period.splits).reduce((periodSum, fte) => periodSum + (fte || 0), 0);
+                        const totalFte = Object.values(period.splits).reduce((periodSum: number, fte: number | undefined) => periodSum + (fte || 0), 0);
                         const proratedSalary = (period.baseSalary * totalFte * days) / daysInYearValue;
                         return sum + proratedSalary;
                       }, 0))}
@@ -1257,7 +1256,7 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.breakdown.map((row, index) => (
+                  {result.breakdown.map((row) => (
                                           <tr key={row.periodId} style={{ 
                         backgroundColor: colors.surface
                       }}>

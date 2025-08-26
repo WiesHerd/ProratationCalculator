@@ -1,7 +1,5 @@
-import React from 'react';
 import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { formatCurrency, formatDate } from '../lib/format';
+import { formatDate } from '../lib/format';
 import { titleCase } from '../lib/keys';
 import { BasePeriod, DerivedItem, ProrationResult } from '../lib/proration';
 import { FileSpreadsheet } from 'lucide-react';
@@ -62,11 +60,11 @@ export function ExportButton({
     });
 
     totalsRow['Total $'] = Object.values(result.totalsByComponent).reduce(
-      (sum, amount) => sum + amount,
+      (sum: number, amount: number) => sum + amount,
       0
     );
 
-    breakdownData.push(totalsRow);
+    breakdownData.push(totalsRow as any);
 
     const breakdownSheet = XLSX.utils.json_to_sheet(breakdownData);
     XLSX.utils.book_append_sheet(workbook, breakdownSheet, 'Breakdown');

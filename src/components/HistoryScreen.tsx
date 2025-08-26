@@ -198,7 +198,7 @@ export function HistoryScreen({ onLoadCalculation, onBack }: HistoryScreenProps)
                   </tr>
                 </thead>
                 <tbody>
-                  {calculations.map((calc, index) => (
+                  {calculations.map((calc) => (
                     <tr 
                       key={calc.id}
                       style={{
@@ -208,16 +208,8 @@ export function HistoryScreen({ onLoadCalculation, onBack }: HistoryScreenProps)
                         transition: 'background-color 0.2s'
                       }}
                       onClick={() => setSelectedCalculation(calc)}
-                      onMouseEnter={(e) => {
-                        if (selectedCalculation?.id !== calc.id) {
-                          e.currentTarget.style.backgroundColor = '#f8f9fa';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (selectedCalculation?.id !== calc.id) {
-                          e.currentTarget.style.backgroundColor = 'white';
-                        }
-                      }}
+                      onMouseEnter={() => {}}
+                      onMouseLeave={() => {}}
                     >
                       <td style={{
                         padding: '16px',
@@ -258,7 +250,7 @@ export function HistoryScreen({ onLoadCalculation, onBack }: HistoryScreenProps)
                       }}>
                         <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                           <button
-                            onClick={(e) => handleLoad(calc)}
+                            onClick={() => handleLoad(calc)}
                             style={{
                               backgroundColor: '#1976d2',
                               color: 'white',

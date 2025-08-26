@@ -98,8 +98,7 @@ export function overlaps(
  */
 export function validateInputs(
   periods: BasePeriod[],
-  year: number,
-  componentKeys: string[]
+  year: number
 ): ValidationResult {
   const errors: ValidationError[] = [];
 
@@ -260,8 +259,5 @@ export function calculateTCC(
   return componentTotal + derivedTotal;
 }
 
-// Helper function for date formatting
-function formatDate(dateString: string): string {
-  return dayjs.utc(dateString).format('MM/DD/YYYY');
-}
+
 
