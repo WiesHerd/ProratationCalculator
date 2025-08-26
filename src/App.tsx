@@ -1405,7 +1405,7 @@ function App() {
                   const newItem: DerivedItem = {
                     id: crypto.randomUUID(),
                     name: '',
-                    sourceComponent: componentKeys[0] || '',
+                    sourceComponent: derivedComponentKeys[0] || '',
                     percentOfSource: 0,
                   };
                   setDerivedItems([...derivedItems, newItem]);
@@ -1550,7 +1550,7 @@ function App() {
                               }, 100);
                             }}
                           >
-                            {componentKeys.map((key) => {
+                            {derivedComponentKeys.map((key) => {
                               const isSelected = item.sourceComponent.split(',').filter(s => s.trim()).includes(key);
                               return (
                                 <label
