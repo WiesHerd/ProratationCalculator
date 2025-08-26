@@ -1529,7 +1529,7 @@ function App() {
                               position: 'absolute',
                               top: '100%',
                               left: 0,
-                              right: 0,
+                              minWidth: '300px',
                               backgroundColor: colors.surface,
                               border: `1px solid ${colors.outlineVariant}`,
                               borderRadius: '4px',
@@ -1600,9 +1600,10 @@ function App() {
                                   </div>
                                   <span style={{ 
                                     color: colors.onSurfaceVariant, 
-                                    fontSize: '0.875rem',
+                                    fontSize: '0.75rem',
                                     fontWeight: 400,
-                                    marginLeft: '12px'
+                                    marginLeft: '12px',
+                                    whiteSpace: 'nowrap'
                                   }}>
                                     ({formatCurrency(componentAmount)})
                                   </span>
