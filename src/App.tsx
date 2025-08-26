@@ -621,11 +621,11 @@ function App() {
               </div>
             </div>
             <div style={{
-              backgroundColor: '#7c3aed', // Purple background
-              color: 'white',
+              backgroundColor: '#e8f5e8', // Light green background
+              color: '#2e7d32', // Dark green text
               padding: '20px',
               borderRadius: '12px',
-              border: `1px solid #7c3aed`,
+              border: `1px solid #c8e6c9`,
               boxShadow: '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
               textAlign: 'center',
               transition: 'all 0.2s ease-in-out',
@@ -652,7 +652,7 @@ function App() {
               <div style={{ 
                 ...typography.headlineSmall,
                 fontWeight: 600,
-                color: 'white',
+                color: '#2e7d32',
                 fontSize: '24px'
               }}>
                 {formatCurrency(result.tcc)}
@@ -1791,17 +1791,15 @@ function App() {
               </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Target Calculator */}
-      <div style={{
-        backgroundColor: colors.surface,
-        borderRadius: '8px',
-        border: `1px solid ${colors.outlineVariant}`,
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-        overflow: 'hidden'
-      }}>
+          {/* Target Calculator */}
+          <div style={{
+            backgroundColor: colors.surface,
+            borderRadius: '8px',
+            border: `1px solid ${colors.outlineVariant}`,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            overflow: 'hidden'
+          }}>
         {/* Header */}
         <div style={{
           padding: '16px 24px',
@@ -2017,6 +2015,8 @@ function App() {
               <strong>Calculation:</strong> {formatCurrency(targetComponents.reduce((sum, key) => sum + (result.totalsByComponent[key] || 0), 0))} ÷ ${conversionFactor.toFixed(2)} = {Math.round(targetComponents.reduce((sum, key) => sum + (result.totalsByComponent[key] || 0), 0) / conversionFactor)} target units
             </div>
           )}
+        </div>
+      </div>
         </div>
       </div>
 
