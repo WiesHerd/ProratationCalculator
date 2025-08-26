@@ -9,6 +9,7 @@ interface SaveCalculationProps {
     componentKeys: string[];
     periods: any[];
     derivedItems: any[];
+    targetCalculatorItems: any[]; // Add Target Calculator items
     totals: {
       totalsByComponent: Record<string, number>;
       derivedTotals: Record<string, number>;
@@ -35,6 +36,7 @@ export function SaveCalculation({ onSave, onClose, currentData }: SaveCalculatio
         componentKeys: currentData.componentKeys,
         periods: currentData.periods,
         derivedItems: currentData.derivedItems,
+        targetCalculatorItems: currentData.targetCalculatorItems,
         totals: currentData.totals
       });
       onSave(name.trim());
@@ -131,6 +133,7 @@ export function SaveCalculation({ onSave, onClose, currentData }: SaveCalculatio
             <div>Year: {currentData.year}</div>
             <div>Periods: {currentData.periods.length}</div>
             <div>Components: {currentData.componentKeys.join(', ')}</div>
+            <div>Target Calculators: {currentData.targetCalculatorItems.length}</div>
             <div>Total Cash Compensation: ${currentData.totals.tcc.toLocaleString()}</div>
           </div>
         </div>

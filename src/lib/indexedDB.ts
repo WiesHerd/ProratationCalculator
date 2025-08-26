@@ -6,6 +6,7 @@ export interface CalculationRecord {
   componentKeys: string[];
   periods: any[];
   derivedItems: any[];
+  targetCalculatorItems: any[]; // Add Target Calculator items
   totals: {
     totalsByComponent: Record<string, number>;
     derivedTotals: Record<string, number>;

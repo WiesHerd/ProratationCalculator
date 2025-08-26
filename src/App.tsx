@@ -268,6 +268,7 @@ function App() {
     setComponentKeys(record.componentKeys);
     setPeriods(record.periods);
     setDerivedItems(record.derivedItems);
+    setTargetCalculatorItems(record.targetCalculatorItems || []); // Load Target Calculator items
   };
 
   const handleExportToExcel = () => {
@@ -285,151 +286,264 @@ function App() {
       sum + dayCountInclusive(period.startDate, period.endDate), 0
     );
 
-    // Sheet 1: Breakdown with beautiful formatting
-    const titleRow1 = { A1: 'Total Cash Compensation - Proration Analysis' };
-    const titleRow2 = { A2: `Calendar Year ${year} - Generated on ${new Date().toLocaleDateString()}` };
-    
-    // Add 2 empty rows for spacing
-    const emptyRow3 = { A3: '' };
-    const emptyRow4 = { A4: '' };
-    
-    // Table headers start at row 5
-    const breakdownData = result.breakdown.map((row, index) => {
-      const dataRow: Record<string, any> = {};
-      dataRow[`A${index + 5}`] = formatDate(row.startDate);
-      dataRow[`B${index + 5}`] = formatDate(row.endDate);
-      dataRow[`C${index + 5}`] = row.days;
-      dataRow[`D${index + 5}`] = row.baseSalary;
-      
-      // Add component FTE columns
-      componentKeys.forEach((key, colIndex) => {
-        const colLetter = String.fromCharCode(69 + colIndex); // E, F, G, etc.
-        dataRow[`${colLetter}${index + 5}`] = periods.find((p) => p.id === row.periodId)?.splits[key] || 0;
+    // ===== SHEET 1: PERIOD BREAKDOWN =====
+    // Get ALL FTE types from periods for Period Breakdown tab too
+    const allFteTypesForBreakdown = new Set<string>();
+    periods.forEach(period => {
+      Object.keys(period.splits).forEach(key => {
+        allFteTypesForBreakdown.add(key);
       });
-      
-      // Add component $ columns
-      componentKeys.forEach((key, colIndex) => {
-        const colLetter = String.fromCharCode(69 + componentKeys.length + colIndex);
-        dataRow[`${colLetter}${index + 5}`] = row.componentAmounts[key] || 0;
-      });
-      
-      // Add total $ column
-      const totalColLetter = String.fromCharCode(69 + componentKeys.length * 2);
-      dataRow[`${totalColLetter}${index + 5}`] = row.totalAmount;
-      
-      return dataRow;
     });
-
-    // Add totals row
-    const totalsRowIndex = result.breakdown.length + 5;
-    const totalsRow: Record<string, any> = {};
-    totalsRow[`A${totalsRowIndex}`] = 'TOTALS';
-    totalsRow[`B${totalsRowIndex}`] = '';
-    totalsRow[`C${totalsRowIndex}`] = totalDays; // Use properly calculated total days
-    totalsRow[`D${totalsRowIndex}`] = ''; // Don't sum base salary
+    const allComponentKeysForBreakdown = Array.from(allFteTypesForBreakdown);
     
-    // Add component FTE totals (empty)
-    componentKeys.forEach((key, colIndex) => {
-      const colLetter = String.fromCharCode(69 + colIndex);
-      totalsRow[`${colLetter}${totalsRowIndex}`] = '';
-    });
-    
-    // Add component $ totals
-    componentKeys.forEach((key, colIndex) => {
-      const colLetter = String.fromCharCode(69 + componentKeys.length + colIndex);
-      totalsRow[`${colLetter}${totalsRowIndex}`] = result.totalsByComponent[key] || 0;
-    });
-    
-    // Add total $ column
-    const totalColLetter = String.fromCharCode(69 + componentKeys.length * 2);
-    totalsRow[`${totalColLetter}${totalsRowIndex}`] = Object.values(result.totalsByComponent).reduce(
-      (sum: number, amount: number) => sum + amount, 0
-    );
-
-    // Combine all data
-    const allData = { ...titleRow1, ...titleRow2, ...emptyRow3, ...emptyRow4, ...breakdownData[0], ...totalsRow };
-    
-    // Create column headers
-    const headerRow: Record<string, any> = {};
-    headerRow['A4'] = 'Start Date';
-    headerRow['B4'] = 'End Date';
-    headerRow['C4'] = 'Days';
-    headerRow['D4'] = 'Base Salary';
-    
-    componentKeys.forEach((key, colIndex) => {
-      const colLetter = String.fromCharCode(69 + colIndex);
-      headerRow[`${colLetter}4`] = `${titleCase(key)} FTE`;
-    });
-    
-    componentKeys.forEach((key, colIndex) => {
-      const colLetter = String.fromCharCode(69 + componentKeys.length + colIndex);
-      headerRow[`${colLetter}4`] = `${titleCase(key)} $`;
-    });
-    
-    const totalHeaderColLetter = String.fromCharCode(69 + componentKeys.length * 2);
-    headerRow[`${totalHeaderColLetter}4`] = 'Total $';
-
     const breakdownSheet = XLSX.utils.aoa_to_sheet([
-      ['Total Cash Compensation - Proration Analysis'],
+      ['Period Breakdown'],
       [`Calendar Year ${year} - Generated on ${new Date().toLocaleDateString()}`],
       [],
-      [],
       [
-        'Start Date', 'End Date', 'Days', 'Base Salary',
-        ...componentKeys.map(key => `${titleCase(key)} FTE`),
-        ...componentKeys.map(key => `${titleCase(key)} $`),
-        'Total $'
+        'Period', 'Days', 'Base Salary',
+        ...allComponentKeysForBreakdown.map(key => titleCase(key)),
+        'Total'
       ],
       ...result.breakdown.map((row) => [
-        formatDate(row.startDate),
-        formatDate(row.endDate),
+        `(${formatDate(row.startDate)}) to (${formatDate(row.endDate)})`,
         row.days,
         row.baseSalary,
-        ...componentKeys.map((key) => periods.find((p) => p.id === row.periodId)?.splits[key] || 0),
-        ...componentKeys.map((key) => row.componentAmounts[key] || 0),
+        ...allComponentKeysForBreakdown.map((key) => row.componentAmounts[key] || 0),
         row.totalAmount,
       ]),
       [
         'TOTALS',
-        '',
-        totalDays, // Use properly calculated total days
+        totalDays,
         '', // Don't sum base salary
-        ...componentKeys.map(() => ''),
-        ...componentKeys.map((key) => result.totalsByComponent[key] || 0),
+        ...allComponentKeysForBreakdown.map((key) => result.totalsByComponent[key] || 0),
         Object.values(result.totalsByComponent).reduce((sum: number, amount: number) => sum + amount, 0)
       ]
     ]);
 
-    // Apply beautiful formatting
+    // Apply formatting to breakdown sheet
     breakdownSheet['!cols'] = [
+      { width: 25 }, // Period
+      { width: 8 },  // Days
+      { width: 15 }, // Base Salary
+      ...allComponentKeysForBreakdown.map(() => ({ width: 15 })), // Component columns
+      { width: 15 }  // Total
+    ];
+
+    // Style breakdown sheet - columns 2 (Base Salary) and 4+ (Total) should be currency formatted
+    applySheetStyling(breakdownSheet, 0, 3, allComponentKeysForBreakdown.length + 4, [2, allComponentKeysForBreakdown.length + 3]);
+
+    XLSX.utils.book_append_sheet(workbook, breakdownSheet, 'Period Breakdown');
+
+    // ===== SHEET 2: FTE DETAILS =====
+    // Get ALL FTE types from periods, not just those with values > 0
+    const allFteTypes = new Set<string>();
+    periods.forEach(period => {
+      Object.keys(period.splits).forEach(key => {
+        allFteTypes.add(key);
+      });
+    });
+    const allComponentKeys = Array.from(allFteTypes);
+    
+    const fteSheet = XLSX.utils.aoa_to_sheet([
+      ['FTE Details'],
+      [`Calendar Year ${year} - Generated on ${new Date().toLocaleDateString()}`],
+      [],
+      [
+        'Start Date', 'End Date', 'Days', 'Base Salary',
+        ...allComponentKeys.map(key => `${titleCase(key)} FTE`),
+        ...allComponentKeys.map(key => `${titleCase(key)} $`),
+        'Total $'
+      ],
+      ...result.breakdown.map((row) => {
+        const period = periods.find((p) => p.id === row.periodId);
+        return [
+          formatDate(row.startDate),
+          formatDate(row.endDate),
+          row.days,
+          row.baseSalary,
+          ...allComponentKeys.map((key) => period?.splits[key] || 0),
+          ...allComponentKeys.map((key) => row.componentAmounts[key] || 0),
+          row.totalAmount,
+        ];
+      }),
+      [
+        'TOTALS',
+        '',
+        totalDays,
+        '', // Don't sum base salary
+        ...allComponentKeys.map((key) => {
+          return periods.reduce((sum, period) => sum + (period.splits[key] || 0), 0);
+        }),
+        ...allComponentKeys.map((key) => result.totalsByComponent[key] || 0),
+        Object.values(result.totalsByComponent).reduce((sum: number, amount: number) => sum + amount, 0)
+      ]
+    ]);
+
+    // Apply formatting to FTE sheet
+    fteSheet['!cols'] = [
       { width: 12 }, // Start Date
       { width: 12 }, // End Date
       { width: 8 },  // Days
       { width: 15 }, // Base Salary
-      ...componentKeys.map(() => ({ width: 12 })), // FTE columns
-      ...componentKeys.map(() => ({ width: 15 })), // $ columns
+      ...allComponentKeys.map(() => ({ width: 12 })), // FTE columns
+      ...allComponentKeys.map(() => ({ width: 15 })), // $ columns
       { width: 15 }  // Total $
     ];
 
-    // Style the title and subtitle
-    if (breakdownSheet['A1']) {
-      breakdownSheet['A1'].s = {
+    // Style FTE sheet
+    applySheetStyling(fteSheet, 0, 3, 4 + allComponentKeys.length * 2 + 1);
+
+    XLSX.utils.book_append_sheet(workbook, fteSheet, 'FTE Details');
+
+    // ===== SHEET 3: ADDITIONAL INCENTIVES =====
+    const incentivesData = [
+      ['Additional Incentives'],
+      [`Calendar Year ${year} - Generated on ${new Date().toLocaleDateString()}`],
+      [],
+      ['Name', 'FTE Type', 'Percent', 'Calculated Amount']
+    ];
+
+    if (derivedItems.length > 0) {
+      derivedItems.forEach(item => {
+        incentivesData.push([
+          item.name,
+          item.sourceComponent || 'All',
+          `${item.percentOfSource}%`,
+          (result.derivedTotals[item.id] || 0).toString()
+        ]);
+      });
+    } else {
+      incentivesData.push(['No additional incentives configured']);
+    }
+
+    const incentivesSheet = XLSX.utils.aoa_to_sheet(incentivesData);
+    incentivesSheet['!cols'] = [
+      { width: 20 }, // Name
+      { width: 15 }, // FTE Type
+      { width: 12 }, // Percent
+      { width: 18 }  // Calculated Amount
+    ];
+
+    // Style incentives sheet - column 3 (Calculated Amount) should be currency formatted
+    applySheetStyling(incentivesSheet, 0, 3, 4, [3]);
+
+    XLSX.utils.book_append_sheet(workbook, incentivesSheet, 'Additional Incentives');
+
+    // ===== SHEET 4: TARGET CALCULATOR =====
+    const targetData = [
+      ['Target Calculator'],
+      [`Calendar Year ${year} - Generated on ${new Date().toLocaleDateString()}`],
+      [],
+      ['Name', 'FTE Type', 'Selected Total', 'Conversion Factor', 'Custom Amount', 'Calculated Target']
+    ];
+
+    if (targetCalculatorItems.length > 0) {
+      targetCalculatorItems.forEach(item => {
+        // Calculate the correct target based on the conversion factor and source components
+        // Follow the exact same logic as the web app
+        let sourceAmount = 0;
+        if (item.useCustomAmount) {
+          sourceAmount = item.customAmount;
+        } else {
+          sourceAmount = item.targetComponents.reduce((sum, component) => {
+            return sum + (result.totalsByComponent[component] || 0);
+          }, 0);
+        }
+        
+        // Use the same calculation as the web app: divide by conversion factor
+        const calculatedTarget = (sourceAmount > 0 && item.conversionFactor > 0) 
+          ? sourceAmount / item.conversionFactor 
+          : 0;
+        
+        targetData.push([
+          item.name,
+          item.targetComponents.join(', ') || 'All',
+          sourceAmount.toLocaleString('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          }),
+          item.conversionFactor.toString(),
+          item.useCustomAmount ? item.customAmount.toString() : 'N/A',
+          calculatedTarget.toLocaleString('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          })
+        ]);
+      });
+    } else {
+      targetData.push(['No target calculators configured']);
+    }
+
+    const targetSheet = XLSX.utils.aoa_to_sheet(targetData);
+    targetSheet['!cols'] = [
+      { width: 20 }, // Name
+      { width: 15 }, // FTE Type
+      { width: 18 }, // Selected Total
+      { width: 18 }, // Conversion Factor
+      { width: 15 }, // Custom Amount
+      { width: 18 }  // Calculated Target
+    ];
+
+    // Style target sheet - columns 2 (Selected Total) and 4 (Custom Amount) should be currency formatted
+    applySheetStyling(targetSheet, 0, 3, 6, [2, 4]);
+
+    XLSX.utils.book_append_sheet(workbook, targetSheet, 'Target Calculator');
+
+    // ===== SHEET 5: SUMMARY =====
+    const summaryData = [
+      ['Compensation Summary'],
+      [`Calendar Year ${year} - Generated on ${new Date().toLocaleDateString()}`],
+      [],
+      ['Component', 'Amount'],
+      ...componentKeys.map((key) => [titleCase(key), result.totalsByComponent[key] || 0]),
+      [],
+      ['Additional Incentives', Object.values(result.derivedTotals).reduce((sum, amount) => sum + amount, 0)],
+      [],
+      ['Total Cash Compensation', result.tcc]
+    ];
+
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+    summarySheet['!cols'] = [
+      { width: 25 }, // Component
+      { width: 18 }  // Amount
+    ];
+
+    // Style summary sheet - column 1 (Amount) should be currency formatted
+    applySheetStyling(summarySheet, 0, 3, 2, [1]);
+
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+
+    // Save the file
+    const filename = `TotalCashComp_Prorate_${year}.xlsx`;
+    XLSX.writeFile(workbook, filename);
+  };
+
+  // Helper function to apply consistent styling
+  const applySheetStyling = (sheet: any, titleRow: number, headerRow: number, numCols: number, currencyColumns: number[] = []) => {
+    // Style title
+    if (sheet[XLSX.utils.encode_cell({ r: titleRow, c: 0 })] && titleRow >= 0) {
+      sheet[XLSX.utils.encode_cell({ r: titleRow, c: 0 })].s = {
         font: { bold: true, size: 16, color: { rgb: '1976d2' } },
         alignment: { horizontal: 'center' }
       };
     }
-    if (breakdownSheet['A2']) {
-      breakdownSheet['A2'].s = {
+
+    // Style subtitle
+    if (sheet[XLSX.utils.encode_cell({ r: titleRow + 1, c: 0 })] && titleRow + 1 >= 0) {
+      sheet[XLSX.utils.encode_cell({ r: titleRow + 1, c: 0 })].s = {
         font: { size: 12, color: { rgb: '666666' } },
         alignment: { horizontal: 'center' }
       };
     }
 
-    // Style the header row
-    for (let col = 0; col < 4 + componentKeys.length * 2 + 1; col++) {
-      const cellRef = XLSX.utils.encode_cell({ r: 3, c: col });
-      if (breakdownSheet[cellRef]) {
-        breakdownSheet[cellRef].s = {
+    // Style header row
+    for (let col = 0; col < numCols; col++) {
+      const cellRef = XLSX.utils.encode_cell({ r: headerRow, c: col });
+      if (sheet[cellRef]) {
+        sheet[cellRef].s = {
           font: { bold: true, color: { rgb: 'ffffff' } },
           fill: { fgColor: { rgb: '1976d2' } },
           alignment: { horizontal: 'center' },
@@ -443,69 +557,66 @@ function App() {
       }
     }
 
-    // Style data rows
-    for (let row = 4; row < 4 + result.breakdown.length + 1; row++) {
-      for (let col = 0; col < 4 + componentKeys.length * 2 + 1; col++) {
+    // Style data rows and apply currency formatting
+    const dataRows = Object.keys(sheet).filter(key => key.match(/^[A-Z]+\d+$/)).map(key => {
+      const cell = XLSX.utils.decode_cell(key);
+      return cell.r;
+    });
+    const maxRow = Math.max(...dataRows);
+
+    for (let row = headerRow + 1; row <= maxRow; row++) {
+      for (let col = 0; col < numCols; col++) {
         const cellRef = XLSX.utils.encode_cell({ r: row, c: col });
-        if (breakdownSheet[cellRef]) {
-          breakdownSheet[cellRef].s = {
+        if (sheet[cellRef]) {
+          sheet[cellRef].s = {
             border: {
               top: { style: 'thin' },
               bottom: { style: 'thin' },
               left: { style: 'thin' },
               right: { style: 'thin' }
             },
-            alignment: { horizontal: col < 3 ? 'center' : 'right' }
+            alignment: { horizontal: col < 2 ? 'center' : 'right' }
           };
           
           // Style totals row
-          if (row === 3 + result.breakdown.length + 1) {
-            breakdownSheet[cellRef].s.font = { bold: true };
-            breakdownSheet[cellRef].s.fill = { fgColor: { rgb: 'f0f0f0' } };
+          if (row === maxRow) {
+            sheet[cellRef].s.font = { bold: true };
+            sheet[cellRef].s.fill = { fgColor: { rgb: 'f0f0f0' } };
+          }
+
+          // Apply currency formatting only to currency columns (Base Salary, $ amounts)
+          // Days (col 2) and FTE columns should NOT be formatted as currency
+          if (typeof sheet[cellRef].v === 'number') {
+            // For FTE Details tab, we need to handle the dynamic number of FTE columns
+            const isFteDetailsTab = numCols > 10; // FTE Details has more columns than other tabs
+            
+            if (isFteDetailsTab) {
+              // FTE Details tab: Base Salary (col 3), $ amount columns (after FTE columns), or specified currency columns
+              const fteColumnCount = (numCols - 5) / 2; // Calculate number of FTE types
+              const isCurrencyColumn = col === 3 || // Base Salary
+                                     col > 4 + fteColumnCount || // $ amount columns (after FTE columns)
+                                     currencyColumns.includes(col);
+              
+              if (isCurrencyColumn) {
+                sheet[cellRef].z = '"$"#,##0.00';
+              } else {
+                // Non-currency columns: Days, FTE values - use number format
+                sheet[cellRef].z = '#,##0.00';
+              }
+            } else {
+              // Other tabs: use the original logic
+              if (col === 3 || (col > 4 + componentKeys.length - 1) || currencyColumns.includes(col)) {
+                // Currency columns: Base Salary (col 3), $ amount columns, or specified currency columns
+                sheet[cellRef].z = '"$"#,##0.00';
+              } else {
+                // Non-currency columns: Days, FTE values - use number format
+                sheet[cellRef].z = '#,##0.00';
+              }
+            }
           }
         }
       }
     }
-
-    // Apply currency formatting
-    const currencyColumns = [3]; // Base Salary column
-    componentKeys.forEach((_, index) => {
-      currencyColumns.push(4 + componentKeys.length + index); // $ columns
-    });
-    currencyColumns.push(4 + componentKeys.length * 2); // Total $ column
-
-    currencyColumns.forEach(colIndex => {
-      for (let row = 4; row < 4 + result.breakdown.length + 1; row++) {
-        const cellRef = XLSX.utils.encode_cell({ r: row, c: colIndex });
-        if (breakdownSheet[cellRef] && typeof breakdownSheet[cellRef].v === 'number') {
-          breakdownSheet[cellRef].z = '"$"#,##0.00';
-        }
-      }
-    });
-
-    XLSX.utils.book_append_sheet(workbook, breakdownSheet, 'Breakdown');
-
-    // Sheet 2: Totals (simplified for now)
-    const totalsData = [
-      ['Component Totals'],
-      [],
-      ...componentKeys.map((key) => [titleCase(key), result.totalsByComponent[key] || 0]),
-      [],
-      ['Additional Incentives'],
-      [],
-      ...Object.entries(result.derivedTotals).map(([id, amount]) => [
-        derivedItems.find((item) => item.id === id)?.name || id, amount
-      ]),
-      [],
-      ['Total Cash Compensation', result.tcc]
-    ];
-
-    const totalsSheet = XLSX.utils.aoa_to_sheet(totalsData);
-    XLSX.utils.book_append_sheet(workbook, totalsSheet, 'Totals');
-
-    // Save the file
-    const filename = `TotalCashComp_Prorate_${year}.xlsx`;
-    XLSX.writeFile(workbook, filename);
   };
 
 
@@ -2399,6 +2510,7 @@ function App() {
             componentKeys,
             periods,
             derivedItems,
+            targetCalculatorItems,
             totals: {
               totalsByComponent: result.totalsByComponent,
               derivedTotals: result.derivedTotals,
