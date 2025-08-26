@@ -115,6 +115,10 @@ function App() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
+  // Target Calculator state
+  const [targetComponents, setTargetComponents] = useState<string[]>([]);
+  const [conversionFactor, setConversionFactor] = useState<number>(0);
+
   // Derive componentKeys from periods to prevent flickering
   const derivedComponentKeys = React.useMemo(() => {
     const allKeys = new Set<string>();
@@ -617,11 +621,11 @@ function App() {
               </div>
             </div>
             <div style={{
-              backgroundColor: colors.primary,
-              color: colors.onPrimary,
+              backgroundColor: '#7c3aed', // Purple background
+              color: 'white',
               padding: '20px',
               borderRadius: '12px',
-              border: `1px solid ${colors.primary}`,
+              border: `1px solid #7c3aed`,
               boxShadow: '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
               textAlign: 'center',
               transition: 'all 0.2s ease-in-out',
@@ -648,7 +652,7 @@ function App() {
               <div style={{ 
                 ...typography.headlineSmall,
                 fontWeight: 600,
-                color: colors.onPrimary,
+                color: 'white',
                 fontSize: '24px'
               }}>
                 {formatCurrency(result.tcc)}
@@ -673,14 +677,20 @@ function App() {
               justifyContent: 'space-between',
               alignItems: 'center'
             }}>
-              <h3 style={{ 
-                margin: 0, 
-                ...typography.titleLarge,
-                fontWeight: 500,
-                color: colors.onPrimaryContainer
-              }}>
-                Periods & FTE Splits
-              </h3>
+                          <h3 style={{ 
+              margin: 0, 
+              ...typography.titleLarge,
+              fontWeight: 500,
+              color: colors.onPrimaryContainer,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/>
+              </svg>
+              Periods & FTE Splits
+            </h3>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
                   onClick={addPeriod}
@@ -1204,14 +1214,20 @@ function App() {
               borderBottom: 'none',
               backgroundColor: colors.primaryContainer
             }}>
-              <h3 style={{ 
-                margin: 0, 
-                ...typography.titleLarge,
-                fontWeight: 500,
-                color: colors.onPrimaryContainer
-              }}>
-                Period Breakdown
-              </h3>
+                          <h3 style={{ 
+              margin: 0, 
+              ...typography.titleLarge,
+              fontWeight: 500,
+              color: colors.onPrimaryContainer,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/>
+              </svg>
+              Period Breakdown
+            </h3>
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', border: 'none' }}>
@@ -1392,14 +1408,20 @@ function App() {
               justifyContent: 'space-between',
               alignItems: 'center'
             }}>
-              <h3 style={{ 
-                margin: 0, 
-                ...typography.titleLarge,
-                fontWeight: 500,
-                color: '#2e7d32'
-              }}>
-                Additional Incentives
-              </h3>
+                          <h3 style={{ 
+              margin: 0, 
+              ...typography.titleLarge,
+              fontWeight: 500,
+              color: '#2e7d32',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+              </svg>
+              Additional Incentives
+            </h3>
               <button
                 onClick={() => {
                   const newItem: DerivedItem = {
@@ -1468,7 +1490,7 @@ function App() {
                           color: colors.onSurfaceVariant, 
                           marginBottom: '4px' 
                         }}>
-                          Source Components
+                          FTE Type
                         </label>
                         <div style={{ position: 'relative' }}>
                           <button
@@ -1769,6 +1791,233 @@ function App() {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Target Calculator */}
+      <div style={{
+        backgroundColor: colors.surface,
+        borderRadius: '8px',
+        border: `1px solid ${colors.outlineVariant}`,
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+        overflow: 'hidden',
+        marginBottom: '24px'
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '16px 24px',
+          borderBottom: 'none',
+          backgroundColor: '#fff3e0', // Light orange background
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+                      <h3 style={{
+              margin: 0,
+              ...typography.titleLarge,
+              fontWeight: 500,
+              color: '#e65100', // Dark orange text
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+              </svg>
+              Target Calculator
+            </h3>
+        </div>
+        <div style={{ padding: '24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', alignItems: 'end' }}>
+            <div>
+                                      <label style={{ 
+                          display: 'block', 
+                          ...typography.labelMedium,
+                          color: colors.onSurfaceVariant, 
+                          marginBottom: '4px' 
+                        }}>
+                          FTE Type
+                        </label>
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={() => {
+                    const currentOpen = document.getElementById('target-dropdown');
+                    if (currentOpen) {
+                      currentOpen.style.display = currentOpen.style.display === 'block' ? 'none' : 'block';
+                    }
+                  }}
+                  style={{
+                    border: `1px solid ${colors.outlineVariant}`,
+                    borderRadius: '4px',
+                    padding: '8px 12px',
+                    ...typography.bodyMedium,
+                    width: '100%',
+                    backgroundColor: colors.surface,
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}
+                >
+                  <span style={{ color: colors.onSurfaceVariant }}>
+                    {targetComponents.length > 0 
+                      ? `${targetComponents.length} selected`
+                      : 'Select components...'
+                    }
+                  </span>
+                  <span style={{ ...typography.labelSmall, color: colors.onSurfaceVariant }}>▼</span>
+                </button>
+                <div
+                  id="target-dropdown"
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    minWidth: '300px',
+                    backgroundColor: colors.surface,
+                    border: `1px solid ${colors.outlineVariant}`,
+                    borderRadius: '4px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    zIndex: 1000,
+                    display: 'none',
+                    maxHeight: '200px',
+                    overflowY: 'auto',
+                    transform: 'translateY(4px)'
+                  }}
+                  onMouseLeave={() => {
+                    setTimeout(() => {
+                      const dropdown = document.getElementById('target-dropdown');
+                      if (dropdown) {
+                        dropdown.style.display = 'none';
+                      }
+                    }, 100);
+                  }}
+                >
+                  {derivedComponentKeys.map((key) => {
+                    const isSelected = targetComponents.includes(key);
+                    const componentAmount = result.totalsByComponent[key] || 0;
+                    return (
+                      <label
+                        key={key}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 12px',
+                          cursor: 'pointer',
+                          ...typography.bodyMedium,
+                          borderBottom: `1px solid ${colors.outlineVariant}`,
+                          backgroundColor: isSelected ? colors.surfaceVariant : colors.surface
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = isSelected ? colors.primaryContainer : colors.surfaceVariant;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = isSelected ? colors.surfaceVariant : colors.surface;
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setTargetComponents([...targetComponents, key]);
+                              } else {
+                                setTargetComponents(targetComponents.filter(c => c !== key));
+                              }
+                            }}
+                            style={{
+                              marginRight: '8px',
+                              width: '16px',
+                              height: '16px',
+                              accentColor: colors.primary
+                            }}
+                          />
+                          <span>{titleCase(key)}</span>
+                        </div>
+                        <span style={{ 
+                          color: colors.onSurfaceVariant, 
+                          fontSize: '0.75rem',
+                          fontWeight: 400,
+                          marginLeft: '12px',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          ({formatCurrency(componentAmount)})
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <label style={{ 
+                display: 'block', 
+                ...typography.labelMedium,
+                color: colors.onSurfaceVariant, 
+                marginBottom: '4px' 
+              }}>
+                Conversion Factor ($)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={conversionFactor}
+                onChange={(e) => setConversionFactor(parseFloat(e.target.value) || 0)}
+                placeholder="e.g., 50.00"
+                style={{
+                  border: `1px solid ${colors.outlineVariant}`,
+                  borderRadius: '4px',
+                  padding: '8px 12px',
+                  ...typography.bodyMedium,
+                  width: '100%'
+                }}
+              />
+            </div>
+            
+            <div>
+              <label style={{ 
+                display: 'block', 
+                ...typography.labelMedium,
+                color: colors.onSurfaceVariant, 
+                marginBottom: '4px' 
+              }}>
+                Calculated Target
+              </label>
+              <div style={{
+                border: `1px solid ${colors.outlineVariant}`,
+                borderRadius: '4px',
+                padding: '8px 12px',
+                backgroundColor: colors.surfaceVariant,
+                ...typography.bodyMedium,
+                fontWeight: 600,
+                color: colors.onSurface,
+                textAlign: 'right'
+              }}>
+                {targetComponents.length > 0 && conversionFactor > 0
+                  ? Math.round(targetComponents.reduce((sum, key) => sum + (result.totalsByComponent[key] || 0), 0) / conversionFactor)
+                  : '0'
+                }
+              </div>
+            </div>
+          </div>
+          
+          {targetComponents.length > 0 && conversionFactor > 0 && (
+            <div style={{ 
+              marginTop: '16px', 
+              padding: '12px', 
+              backgroundColor: colors.primaryContainer,
+              borderRadius: '4px',
+              ...typography.bodySmall,
+              color: colors.onPrimaryContainer
+            }}>
+              <strong>Calculation:</strong> {formatCurrency(targetComponents.reduce((sum, key) => sum + (result.totalsByComponent[key] || 0), 0))} ÷ ${conversionFactor.toFixed(2)} = {Math.round(targetComponents.reduce((sum, key) => sum + (result.totalsByComponent[key] || 0), 0) / conversionFactor)} target units
+            </div>
+          )}
         </div>
       </div>
 
