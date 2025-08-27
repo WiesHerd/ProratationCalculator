@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useIndexedDBState } from './hooks/useIndexedDBState';
 import { formatCurrency, parseCurrency, formatDate } from './lib/format';
 import { titleCase } from './lib/keys';
@@ -6,6 +6,8 @@ import { BasePeriod, DerivedItem, validateInputs, prorate, computeDerived, calcu
 import { CalculationRecord, indexedDBService } from './lib/indexedDB';
 import { History } from './components/History';
 import { SaveCalculation } from './components/SaveCalculation';
+import { PercentileCalculator } from './features/percentile-calculator/components/percentile-calculator';
+import { MarketData } from './features/percentile-calculator/types/percentile-types';
 import * as XLSX from 'xlsx';
 
 
@@ -76,48 +78,24 @@ const colors = {
   }
 };
 
-// Sample seed data
-const seedPeriods: BasePeriod[] = [
-  {
-    id: crypto.randomUUID(),
-    startDate: '2025-01-01',
-    endDate: '2025-08-24',
-    baseSalary: 1529264.25,
-    baseSalaryStr: '$1,529,264.25',
-    splits: { clinical: 0.8 },
-  },
-  {
-    id: crypto.randomUUID(),
-    startDate: '2025-08-25',
-    endDate: '2025-12-31',
-    baseSalary: 2150000.00,
-    baseSalaryStr: '$2,150,000.00',
-    splits: { clinical: 0.8 },
-  },
-];
-
-const seedDerivedItems: DerivedItem[] = [
-  {
-    id: crypto.randomUUID(),
-    name: 'PSQ',
-    sourceComponent: 'clinical',
-    percentOfSource: 5,
-  },
-];
+// Empty initial data - no seed data
+const emptyPeriods: BasePeriod[] = [];
+const emptyDerivedItems: DerivedItem[] = [];
 
 function App() {
   // Local state management
   const [year, setYear] = useIndexedDBState('tcc.year', 2025);
   const [componentKeys, setComponentKeys] = useIndexedDBState('tcc.componentKeys', ['clinical']);
-  const [periods, setPeriods] = useIndexedDBState('tcc.periods', seedPeriods);
-  const [derivedItems, setDerivedItems] = useIndexedDBState('tcc.derivedItems', seedDerivedItems);
+  const [periods, setPeriods] = useIndexedDBState('tcc.periods', emptyPeriods);
+  const [derivedItems, setDerivedItems] = useIndexedDBState('tcc.derivedItems', emptyDerivedItems);
 
   // Save/History modal state
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showClearModal, setShowClearModal] = useState(false);
 
   // Target Calculator state
-  const [targetCalculatorItems, setTargetCalculatorItems] = useState<Array<{
+  const [targetCalculatorItems, setTargetCalculatorItems] = useIndexedDBState<Array<{
     id: string;
     name: string;
     targetComponents: string[];
@@ -125,7 +103,11 @@ function App() {
     conversionFactorStr: string;
     useCustomAmount: boolean;
     customAmount: number;
-  }>>([]);
+  }>>('tcc.targetCalculatorItems', []);
+
+  // Percentile Calculator state
+  const [currentScreen, setCurrentScreen] = useState<'main' | 'market-analysis'>('main');
+  const [marketDataList, setMarketDataList] = useIndexedDBState<MarketData[]>('tcc.marketData', []);
 
   // Derive componentKeys from periods to prevent flickering
   const derivedComponentKeys = React.useMemo(() => {
@@ -156,6 +138,26 @@ function App() {
     ...prorationResult,
     derivedTotals,
     tcc,
+  };
+
+  // Get current wRVUs from derived items
+  const currentWrvus = React.useMemo(() => {
+    const wrvuItem = derivedItems.find(item => item.isWrvuIncentive && item.actualWrvus !== undefined);
+    return wrvuItem?.actualWrvus || 0;
+  }, [derivedItems]);
+
+  // Percentile Calculator functions
+  const handleSaveMarketData = (marketData: MarketData) => {
+    const existingIndex = marketDataList.findIndex(data => data.id === marketData.id);
+    if (existingIndex >= 0) {
+      // Update existing
+      const updatedList = [...marketDataList];
+      updatedList[existingIndex] = marketData;
+      setMarketDataList(updatedList);
+    } else {
+      // Add new
+      setMarketDataList([...marketDataList, marketData]);
+    }
   };
 
   // Remove the problematic useEffect entirely - we'll handle component key management differently
@@ -231,7 +233,7 @@ function App() {
   };
 
   // Target Calculator helper functions
-  const addTargetCalculatorItem = () => {
+  const addTargetCalculatorItem = useCallback(() => {
     const newItem = {
       id: crypto.randomUUID(),
       name: '',
@@ -241,8 +243,9 @@ function App() {
       useCustomAmount: false,
       customAmount: 0,
     };
-    setTargetCalculatorItems([...targetCalculatorItems, newItem]);
-  };
+    
+    setTargetCalculatorItems(prevItems => [...prevItems, newItem]);
+  }, [setTargetCalculatorItems]);
 
   const updateTargetCalculatorItem = (id: string, updates: Partial<{
     name: string;
@@ -269,6 +272,50 @@ function App() {
     setPeriods(record.periods);
     setDerivedItems(record.derivedItems);
     setTargetCalculatorItems(record.targetCalculatorItems || []); // Load Target Calculator items
+    setMarketDataList(record.marketData || []); // Load Market Data
+  };
+
+  const handleClearSession = async () => {
+    try {
+      // Clear the specific IndexedDB keys used by the app
+      await indexedDBService.saveSetting('tcc.year', new Date().getFullYear());
+      await indexedDBService.saveSetting('tcc.componentKeys', []);
+      await indexedDBService.saveSetting('tcc.periods', []);
+      await indexedDBService.saveSetting('tcc.derivedItems', []);
+      await indexedDBService.saveSetting('tcc.targetCalculatorItems', []);
+      await indexedDBService.saveSetting('tcc.marketData', []);
+      
+      setShowClearModal(false);
+      alert('Current session cleared. The page will reload to show an empty calculator.');
+      window.location.reload();
+    } catch (error) {
+      console.error('Error clearing session:', error);
+      alert('Failed to clear session. Please try again.');
+    }
+  };
+
+  const handleClearAllData = async () => {
+    try {
+      // Clear IndexedDB
+      await indexedDBService.clearAllCalculations();
+      await indexedDBService.clearAllSettings();
+      
+      // Clear the specific IndexedDB keys used by the app
+      await indexedDBService.saveSetting('tcc.year', new Date().getFullYear());
+      await indexedDBService.saveSetting('tcc.componentKeys', []);
+      await indexedDBService.saveSetting('tcc.periods', []);
+      await indexedDBService.saveSetting('tcc.derivedItems', []);
+      await indexedDBService.saveSetting('tcc.marketData', []);
+      
+      setShowClearModal(false);
+      alert('All data has been cleared successfully. The page will reload to show an empty calculator.');
+      
+      // Force a page reload to ensure the IndexedDB state is properly reset
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to clear data:', error);
+      alert('Failed to clear data. Please try again.');
+    }
   };
 
   const handleExportToExcel = () => {
@@ -652,44 +699,45 @@ function App() {
 
 
   return (
-    <div style={{ 
-      minHeight: '100vh', 
-      backgroundColor: colors.surface,
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-    }}>
-      {/* Header */}
-      <div style={{
-        backgroundColor: colors.primary,
-        color: colors.onPrimary,
-        padding: '16px 24px',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h1 style={{ 
-              margin: 0, 
-              ...typography.headlineSmall,
-              fontWeight: 500,
-              color: colors.onPrimary
-            }}>
-              Total Cash Compensation (Proration)
-            </h1>
-            <p style={{ 
-              margin: '4px 0 0 0', 
-              opacity: 0.9, 
-              ...typography.bodyMedium,
-              color: colors.onPrimary
-            }}>
-              Prorate compensation across calendar year using dated salary/FTE periods and dynamic incentives
-            </p>
+    <>
+      {/* Main Calculator Screen */}
+      {currentScreen === 'main' && (
+        <div style={{ 
+          minHeight: '100vh', 
+          backgroundColor: colors.surface,
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+        }}>
+          {/* Header */}
+          <div style={{
+            backgroundColor: colors.primary,
+            color: colors.onPrimary,
+            padding: '16px 24px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h1 style={{ 
+                  margin: 0, 
+                  ...typography.headlineSmall,
+                  fontWeight: 500,
+                  color: colors.onPrimary
+                }}>
+                  Total Cash Compensation (Proration)
+                </h1>
+                <p style={{ 
+                  margin: '4px 0 0 0', 
+                  opacity: 0.9, 
+                  ...typography.bodyMedium,
+                  color: colors.onPrimary
+                }}>
+                  Prorate compensation across calendar year using dated salary/FTE periods and dynamic incentives
+                </p>
+              </div>
+            </div>
           </div>
-          
 
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+          {/* Main Content */}
+          <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {/* Action Buttons */}
           <div style={{ 
@@ -743,51 +791,10 @@ function App() {
             >
               New Calculation
             </button>
-            <button
-              onClick={() => {
-                // Clear everything and start completely fresh
-                const clearAll = async () => {
-                  try {
-                    // Clear all IndexedDB data
-                    await indexedDBService.clearAllSettings();
-                    
-                    // Reset to absolute defaults
-                    setYear(2025);
-                    setComponentKeys(['clinical']);
-                    setPeriods([]);
-                    setDerivedItems([]);
-                    
-                    // Force a page reload to ensure complete reset
-                    window.location.reload();
-                  } catch (error) {
-                    console.error('Error clearing all data:', error);
-                    // Fallback to page reload
-                    window.location.reload();
-                  }
-                };
-                
-                clearAll();
-              }}
-              style={{
-                backgroundColor: '#6b7280',
-                color: 'white',
-                border: '1px solid #4b5563',
-                padding: '8px 16px',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500',
-                transition: 'all 0.2s',
-                width: '160px',
-                flex: '1'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#4b5563'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#6b7280'}
-            >
-              Clear All & Reload
-            </button>
+
             <button
               onClick={() => setShowSaveModal(true)}
+              title="Save current calculation with all data including market data for later use"
               style={{
                 backgroundColor: '#1976d2',
                 color: 'white',
@@ -808,6 +815,7 @@ function App() {
             </button>
             <button
               onClick={() => setShowHistoryModal(true)}
+              title="View and load previously saved calculations"
               style={{
                 backgroundColor: '#1976d2',
                 color: 'white',
@@ -827,8 +835,30 @@ function App() {
               History
             </button>
             <button
+              onClick={() => setCurrentScreen('market-analysis')}
+              title="Compare your TCC and wRVU against market percentiles"
+              style={{
+                backgroundColor: '#10b981',
+                color: 'white',
+                border: '1px solid #059669',
+                padding: '8px 16px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                transition: 'all 0.2s',
+                width: '160px',
+                flex: '1'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#059669'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+            >
+              Market Analysis
+            </button>
+            <button
               onClick={handleExportToExcel}
               disabled={!validation.ok}
+              title="Export calculation results to Excel spreadsheet"
               style={{
                 backgroundColor: !validation.ok ? '#d1d5db' : '#1976d2',
                 color: 'white',
@@ -854,6 +884,27 @@ function App() {
               }}
             >
               Export to Excel
+            </button>
+            <button
+              onClick={() => setShowClearModal(true)}
+              title="Clear data - choose between current session or everything including saved calculations"
+              style={{
+                backgroundColor: '#dc2626',
+                color: 'white',
+                border: '1px solid #b91c1c',
+                padding: '8px 16px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                transition: 'all 0.2s',
+                width: '160px',
+                flex: '1'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#b91c1c'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
+            >
+              Clear
             </button>
 
           </div>
@@ -2319,22 +2370,22 @@ function App() {
             <div style={{
               padding: '16px 24px',
               borderBottom: `1px solid ${colors.outlineVariant}`,
-              backgroundColor: '#fff3e0', // Light orange background
+              backgroundColor: '#fff3e0',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center'
             }}>
-              <h3 style={{
-                margin: 0,
+              <h3 style={{ 
+                margin: 0, 
                 ...typography.titleLarge,
                 fontWeight: 500,
-                color: '#e65100', // Dark orange text
+                color: '#e65100',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px'
               }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                 </svg>
                 Target Calculator
               </h3>
@@ -2375,9 +2426,7 @@ function App() {
                         </label>
                         <input
                           value={item.name}
-                          onChange={(e) => {
-                            updateTargetCalculatorItem(item.id, { name: e.target.value });
-                          }}
+                          onChange={(e) => updateTargetCalculatorItem(item.id, { name: e.target.value })}
                           placeholder="e.g., wRVU Target"
                           style={{
                             border: `1px solid ${colors.outlineVariant}`,
@@ -2401,19 +2450,10 @@ function App() {
                         <div style={{ position: 'relative' }}>
                           <button
                             onClick={() => {
-                              const currentOpen = document.getElementById(`dropdown-${item.id}`);
+                              const currentOpen = document.getElementById(`target-dropdown-${item.id}`);
                               if (currentOpen) {
                                 const isVisible = currentOpen.style.display === 'block';
                                 currentOpen.style.display = isVisible ? 'none' : 'block';
-                                
-                                // Always position dropdown above the button
-                                if (!isVisible) {
-                                  setTimeout(() => {
-                                      currentOpen.style.top = 'auto';
-                                      currentOpen.style.bottom = '100%';
-                                      currentOpen.style.transform = 'translateY(-4px)';
-                                  }, 10);
-                                }
                               }
                             }}
                             style={{
@@ -2439,26 +2479,25 @@ function App() {
                             <span style={{ ...typography.labelSmall, color: colors.onSurfaceVariant }}>▼</span>
                           </button>
                           <div
-                            id={`dropdown-${item.id}`}
+                            id={`target-dropdown-${item.id}`}
                             style={{
                               position: 'absolute',
-                              top: '100%',
+                              bottom: '100%',
                               left: 0,
                               minWidth: '300px',
                               backgroundColor: colors.surface,
                               border: `1px solid ${colors.outlineVariant}`,
                               borderRadius: '4px',
                               boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                              zIndex: 9999,
+                              zIndex: 99999,
                               display: 'none',
                               maxHeight: '200px',
                               overflowY: 'auto',
-                              transform: 'translateY(4px)'
+                              marginBottom: '4px'
                             }}
                             onMouseLeave={() => {
-                              // Close dropdown when mouse leaves
                               setTimeout(() => {
-                                const dropdown = document.getElementById(`dropdown-${item.id}`);
+                                const dropdown = document.getElementById(`target-dropdown-${item.id}`);
                                 if (dropdown) {
                                   dropdown.style.display = 'none';
                                 }
@@ -2493,15 +2532,13 @@ function App() {
                                       type="checkbox"
                                       checked={isSelected}
                                       onChange={(e) => {
+                                        let newComponents;
                                         if (e.target.checked) {
-                                          updateTargetCalculatorItem(item.id, { 
-                                            targetComponents: [...item.targetComponents, key] 
-                                          });
+                                          newComponents = [...item.targetComponents, key];
                                         } else {
-                                          updateTargetCalculatorItem(item.id, { 
-                                            targetComponents: item.targetComponents.filter(c => c !== key) 
-                                          });
+                                          newComponents = item.targetComponents.filter(c => c !== key);
                                         }
+                                        updateTargetCalculatorItem(item.id, { targetComponents: newComponents });
                                       }}
                                       style={{
                                         marginRight: '8px',
@@ -2539,17 +2576,16 @@ function App() {
                         </label>
                         <input
                           type="text"
-                          value={item.conversionFactorStr || ''}
+                          value={item.conversionFactorStr}
                           onChange={(e) => handleConversionFactorChange(item.id, e.target.value)}
                           onBlur={() => handleConversionFactorBlur(item.id)}
-                          placeholder="Enter conversion factor (e.g., 52.08)"
+                          placeholder="0.00"
                           style={{
                             border: `1px solid ${colors.outlineVariant}`,
                             borderRadius: '4px',
                             padding: '8px 12px',
                             ...typography.bodyMedium,
-                            width: '100%',
-                            fontFamily: 'inherit'
+                            width: '100%'
                           }}
                         />
                       </div>
@@ -2564,49 +2600,34 @@ function App() {
                           Custom Amount
                         </label>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <button
-                            onClick={() => {
-                              updateTargetCalculatorItem(item.id, { useCustomAmount: !item.useCustomAmount });
+                          <input
+                            type="checkbox"
+                            checked={item.useCustomAmount}
+                            onChange={(e) => updateTargetCalculatorItem(item.id, { useCustomAmount: e.target.checked })}
+                            style={{
+                              width: '16px',
+                              height: '16px',
+                              accentColor: colors.primary
                             }}
+                          />
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={item.customAmount}
+                            onChange={(e) => updateTargetCalculatorItem(item.id, { customAmount: parseFloat(e.target.value) || 0 })}
+                            disabled={!item.useCustomAmount}
+                            placeholder="0.00"
                             style={{
                               border: `1px solid ${colors.outlineVariant}`,
-                              backgroundColor: item.useCustomAmount ? colors.primary : colors.surface,
-                              color: item.useCustomAmount ? colors.onPrimary : colors.onSurface,
                               borderRadius: '4px',
                               padding: '8px 12px',
-                              cursor: 'pointer',
-                              fontSize: '12px',
-                              fontWeight: '500',
-                              whiteSpace: 'nowrap'
+                              ...typography.bodyMedium,
+                              width: '100%',
+                              backgroundColor: item.useCustomAmount ? colors.surface : colors.surfaceVariant,
+                              color: item.useCustomAmount ? colors.onSurface : colors.onSurfaceVariant
                             }}
-                            title={item.useCustomAmount ? 'Use calculated amounts' : 'Use custom amount'}
-                          >
-                            {item.useCustomAmount ? 'Use Calculated' : 'Use Custom'}
-                          </button>
-                          {item.useCustomAmount && (
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={item.customAmount === 0 ? '' : item.customAmount.toString()}
-                              onChange={(e) => {
-                                const parsed = parseFloat(e.target.value) || 0;
-                                updateTargetCalculatorItem(item.id, { customAmount: parsed });
-                              }}
-                              onBlur={(e) => {
-                                const value = parseFloat(e.target.value) || 0;
-                                updateTargetCalculatorItem(item.id, { customAmount: value });
-                              }}
-                              placeholder="Enter amount"
-                              style={{
-                                border: `1px solid ${colors.outlineVariant}`,
-                                borderRadius: '4px',
-                                padding: '8px 12px',
-                                ...typography.bodyMedium,
-                                width: '120px'
-                              }}
-                            />
-                          )}
+                          />
                         </div>
                       </div>
                       
@@ -2641,33 +2662,21 @@ function App() {
                               }, 0);
                             }
                             
-                            if (sourceAmount > 0 && item.conversionFactor > 0) {
-                              const targetAmount = sourceAmount / item.conversionFactor;
-                              return targetAmount.toLocaleString('en-US', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2
-                              });
-                            }
+                            const calculatedTarget = (sourceAmount > 0 && item.conversionFactor > 0) 
+                              ? sourceAmount / item.conversionFactor 
+                              : 0;
                             
-                            return '0.00';
+                            return calculatedTarget.toLocaleString('en-US', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2
+                            });
                           })()}
                         </div>
                       </div>
                       
                       <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'flex-end' }}>
                         <button
-                          onClick={() => {
-                            const newItem = {
-                              id: crypto.randomUUID(),
-                              name: item.name,
-                              targetComponents: item.targetComponents,
-                              conversionFactor: item.conversionFactor,
-                              conversionFactorStr: item.conversionFactorStr,
-                              useCustomAmount: item.useCustomAmount,
-                              customAmount: item.customAmount,
-                            };
-                            setTargetCalculatorItems([...targetCalculatorItems, newItem]);
-                          }}
+                          onClick={() => deleteTargetCalculatorItem(item.id)}
                           style={{
                             border: `1px solid ${colors.outlineVariant}`,
                             backgroundColor: colors.surface,
@@ -2675,32 +2684,8 @@ function App() {
                             padding: '8px',
                             cursor: 'pointer',
                             ...typography.labelSmall,
-                            width: '40px',
-                            height: '40px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: colors.onSurfaceVariant
-                          }}
-                          title="Duplicate"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => {
-                            deleteTargetCalculatorItem(item.id);
-                          }}
-                          style={{
-                            border: `1px solid ${colors.outlineVariant}`,
-                            backgroundColor: colors.surface,
-                            borderRadius: '4px',
-                            padding: '8px',
-                            cursor: 'pointer',
-                            ...typography.labelSmall,
-                            width: '40px',
-                            height: '40px',
+                            width: '32px',
+                            height: '32px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -2733,8 +2718,11 @@ function App() {
               </div>
             </div>
           </div>
+
         </div>
       </div>
+        </div>
+      )}
 
       {/* Modals */}
       {showSaveModal && (
@@ -2747,6 +2735,7 @@ function App() {
             periods,
             derivedItems,
             targetCalculatorItems,
+            marketData: marketDataList,
             totals: {
               totalsByComponent: result.totalsByComponent,
               derivedTotals: result.derivedTotals,
@@ -2762,7 +2751,199 @@ function App() {
           onClose={() => setShowHistoryModal(false)}
         />
       )}
-    </div>
+
+      {/* Clear Data Modal */}
+      {showClearModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            width: '90%',
+            maxWidth: '400px',
+            padding: '24px'
+          }}>
+            {/* Header */}
+            <div style={{ 
+              textAlign: 'center', 
+              marginBottom: '20px' 
+            }}>
+              <h2 style={{ 
+                margin: 0, 
+                fontSize: '18px', 
+                fontWeight: 500, 
+                color: '#202124',
+                marginBottom: '4px'
+              }}>
+                Clear Data
+              </h2>
+              <p style={{ 
+                margin: 0, 
+                fontSize: '14px', 
+                color: '#5f6368',
+                lineHeight: '1.4'
+              }}>
+                What would you like to clear?
+              </p>
+            </div>
+
+            {/* Buttons */}
+            <div style={{ 
+              display: 'flex', 
+              gap: '8px',
+              justifyContent: 'flex-end'
+            }}>
+              <button
+                onClick={() => setShowClearModal(false)}
+                style={{
+                  backgroundColor: 'transparent',
+                  color: '#1a73e8',
+                  border: 'none',
+                  padding: '10px 16px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f3f4'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearSession}
+                style={{
+                  backgroundColor: '#1a73e8',
+                  color: 'white',
+                  border: 'none',
+                  padding: '10px 16px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1557b0'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#1a73e8'}
+              >
+                Clear session
+              </button>
+              <button
+                onClick={handleClearAllData}
+                style={{
+                  backgroundColor: '#d93025',
+                  color: 'white',
+                  border: 'none',
+                  padding: '10px 16px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#b31412'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#d93025'}
+              >
+                Clear all
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Market Analysis Screen */}
+      {currentScreen === 'market-analysis' && (
+        <div style={{ 
+          minHeight: '100vh', 
+          backgroundColor: colors.surface,
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+        }}>
+          {/* Header */}
+          <div style={{
+            backgroundColor: colors.primary,
+            color: colors.onPrimary,
+            padding: '16px 24px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h1 style={{ 
+                  margin: 0, 
+                  ...typography.headlineSmall,
+                  fontWeight: 500,
+                  color: colors.onPrimary
+                }}>
+                  Market Percentile Analysis
+                </h1>
+                <p style={{ 
+                  margin: '4px 0 0 0', 
+                  opacity: 0.9, 
+                  ...typography.bodyMedium,
+                  color: colors.onPrimary
+                }}>
+                  Compare your TCC and wRVU performance against market benchmarks
+                </p>
+              </div>
+              <button
+                onClick={() => setCurrentScreen('main')}
+                title="Return to main TCC calculation screen"
+                style={{
+                  backgroundColor: 'transparent',
+                  color: colors.onPrimary,
+                  border: `1px solid ${colors.onPrimary}`,
+                  padding: '8px 16px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                Back to Calculator
+              </button>
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+            <div style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: '24px',
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              border: '1px solid #e5e7eb',
+              padding: '24px',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+            }}>
+              <PercentileCalculator
+                currentTcc={result.tcc}
+                currentWrvus={currentWrvus}
+                onSaveMarketData={handleSaveMarketData}
+                savedMarketData={marketDataList}
+                tccComponents={prorationResult.totalsByComponent}
+                tccDerived={derivedTotals}
+                derivedItems={derivedItems}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { indexedDBService } from '../lib/indexedDB';
 
 /**
@@ -10,16 +10,24 @@ import { indexedDBService } from '../lib/indexedDB';
 export function useIndexedDBState<T>(key: string, initial: T): [T, (value: T | ((prev: T) => T)) => void] {
   const [state, setState] = useState<T>(initial);
   const [isLoaded, setIsLoaded] = useState(false);
+  const isInitialLoad = useRef(true);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load initial state from IndexedDB
   useEffect(() => {
     const loadState = async () => {
       try {
         const savedState = await indexedDBService.getSetting(key, initial);
-        setState(savedState);
+        if (isInitialLoad.current) {
+          setState(savedState);
+          isInitialLoad.current = false;
+        }
       } catch (error) {
         console.error('Failed to load from IndexedDB:', error);
-        setState(initial);
+        if (isInitialLoad.current) {
+          setState(initial);
+          isInitialLoad.current = false;
+        }
       } finally {
         setIsLoaded(true);
       }
@@ -28,20 +36,42 @@ export function useIndexedDBState<T>(key: string, initial: T): [T, (value: T | (
     loadState();
   }, [key, initial]);
 
-  // Save state to IndexedDB when it changes
-  useEffect(() => {
-    if (isLoaded) {
-      const saveState = async () => {
-        try {
-          await indexedDBService.saveSetting(key, state);
-        } catch (error) {
-          console.error('Failed to save to IndexedDB:', error);
-        }
-      };
-
-      saveState();
+  // Debounced save to IndexedDB
+  const debouncedSave = useCallback(async (value: T) => {
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
-  }, [key, state, isLoaded]);
 
-  return [state, setState];
+    // Set new timeout for debounced save
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await indexedDBService.saveSetting(key, value);
+      } catch (error) {
+        console.error('Failed to save to IndexedDB:', error);
+      }
+    }, 300); // 300ms debounce
+  }, [key]);
+
+  // Save state to IndexedDB when it changes (debounced)
+  useEffect(() => {
+    if (isLoaded && !isInitialLoad.current) {
+      debouncedSave(state);
+    }
+  }, [state, isLoaded, debouncedSave]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const setStateWithIndexedDB = useCallback((value: T | ((prev: T) => T)) => {
+    setState(value);
+  }, []);
+
+  return [state, setStateWithIndexedDB];
 }

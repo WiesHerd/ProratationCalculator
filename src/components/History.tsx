@@ -45,9 +45,7 @@ export function History({ onLoadCalculation, onClose }: HistoryProps) {
     onClose();
   };
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleString();
-  };
+
 
   if (loading) {
     return (
@@ -77,54 +75,72 @@ export function History({ onLoadCalculation, onClose }: HistoryProps) {
   }
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000
-    }}>
+    <div 
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <div style={{
         backgroundColor: 'white',
-        borderRadius: '12px',
-        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+        borderRadius: '8px',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
         width: '90%',
-        maxWidth: '800px',
-        maxHeight: '80vh',
+        maxWidth: '900px',
+        maxHeight: '85vh',
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column'
       }}>
         {/* Header */}
         <div style={{
-          padding: '24px',
-          borderBottom: '1px solid #e0e0e0',
+          padding: '16px 24px',
+          borderBottom: '1px solid #e1e5e9',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          backgroundColor: '#f8f9fa'
+          backgroundColor: '#ffffff'
         }}>
-          <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 600, color: '#333' }}>
-            Calculation History
+          <h2 style={{ 
+            margin: 0, 
+            fontSize: '18px', 
+            fontWeight: '500', 
+            color: '#1a1a1a',
+            fontFamily: 'Google Sans, Roboto, Arial, sans-serif'
+          }}>
+            Saved Calculations ({calculations.length})
           </h2>
           <button
             onClick={onClose}
             style={{
               background: 'none',
               border: 'none',
-              fontSize: '24px',
+              fontSize: '18px',
               cursor: 'pointer',
-              color: '#666',
+              color: '#5f6368',
               padding: '8px',
-              borderRadius: '4px',
+              borderRadius: '50%',
+              width: '32px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               transition: 'background-color 0.2s'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e0e0e0'}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f3f4'}
             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
           >
             ×
@@ -132,115 +148,267 @@ export function History({ onLoadCalculation, onClose }: HistoryProps) {
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1, overflow: 'auto', padding: '24px' }}>
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {calculations.length === 0 ? (
             <div style={{
               textAlign: 'center',
-              padding: '60px 20px',
-              color: '#666'
+              padding: '48px 24px',
+              color: '#5f6368',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: '200px'
             }}>
-              <div style={{ fontSize: '48px', marginBottom: '16px' }}>📊</div>
-              <div style={{ fontSize: '18px', marginBottom: '8px' }}>No saved calculations</div>
-              <div style={{ fontSize: '14px' }}>Your saved calculations will appear here</div>
+              <div style={{ 
+                fontSize: '48px', 
+                marginBottom: '16px',
+                opacity: '0.6'
+              }}>📊</div>
+              <div style={{ 
+                fontSize: '16px', 
+                marginBottom: '8px', 
+                fontWeight: '500',
+                color: '#1a1a1a'
+              }}>No saved calculations</div>
+              <div style={{ 
+                fontSize: '14px', 
+                marginBottom: '24px', 
+                color: '#5f6368'
+              }}>Your saved calculations will appear here</div>
+              <button
+                onClick={onClose}
+                style={{
+                  backgroundColor: '#1a73e8',
+                  color: 'white',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'background-color 0.2s',
+                  fontFamily: 'Google Sans, Roboto, Arial, sans-serif'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1557b0'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#1a73e8'}
+              >
+                Close
+              </button>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {calculations.map((calc) => (
-                <div
-                  key={calc.id}
-                  style={{
-                    border: '1px solid #e0e0e0',
-                    borderRadius: '8px',
-                    padding: '20px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    backgroundColor: selectedId === calc.id ? '#f0f8ff' : 'white'
-                  }}
-                  onClick={() => setSelectedId(calc.id)}
-                                          onMouseEnter={() => {}}
-                        onMouseLeave={() => {}}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#333' }}>
-                        {calc.name}
-                      </h3>
-                      <div style={{ fontSize: '14px', color: '#666', marginTop: '4px' }}>
-                        {formatDate(calc.timestamp)} • Year {calc.year}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button
-                        onClick={() => handleLoad(calc)}
-                        style={{
-                          backgroundColor: '#1976d2',
-                          color: 'white',
-                          border: 'none',
-                          padding: '8px 16px',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '14px',
-                          fontWeight: 500,
-                          transition: 'background-color 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1565c0'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#1976d2'}
-                      >
-                        Load
-                      </button>
-                      <button
-                        onClick={(e) => handleDelete(calc.id, e)}
-                        style={{
-                          backgroundColor: '#dc3545',
-                          color: 'white',
-                          border: 'none',
-                          padding: '8px 12px',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '14px',
-                          transition: 'background-color 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#c82333'}
-                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#dc3545'}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Summary Cards */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
-                    {Object.entries(calc.totals.totalsByComponent).map(([key, amount]) => (
-                      <div key={key} style={{
-                        backgroundColor: '#f8f9fa',
-                        padding: '12px',
-                        borderRadius: '6px',
-                        textAlign: 'center'
-                      }}>
-                        <div style={{ fontSize: '12px', color: '#666', textTransform: 'uppercase', marginBottom: '4px' }}>
-                          {key.replace('_', ' ')}
-                        </div>
-                        <div style={{ fontSize: '16px', fontWeight: 600, color: '#333' }}>
-                          {formatCurrency(amount)}
-                        </div>
-                      </div>
-                    ))}
-                    <div style={{
-                      backgroundColor: '#e3f2fd',
-                      padding: '12px',
-                      borderRadius: '6px',
-                      textAlign: 'center'
+            <div style={{ 
+              flex: 1, 
+              overflow: 'auto',
+              maxHeight: 'calc(85vh - 80px)'
+            }}>
+              {/* Table */}
+              <table style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontFamily: 'Google Sans, Roboto, Arial, sans-serif'
+              }}>
+                {/* Table Header */}
+                <thead style={{
+                  position: 'sticky',
+                  top: 0,
+                  backgroundColor: '#f8f9fa',
+                  borderBottom: '1px solid #e1e5e9'
+                }}>
+                  <tr>
+                    <th style={{
+                      padding: '12px 16px',
+                      textAlign: 'left',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      color: '#5f6368',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      borderBottom: '1px solid #e1e5e9'
                     }}>
-                      <div style={{ fontSize: '12px', color: '#1976d2', textTransform: 'uppercase', marginBottom: '4px' }}>
-                        Total
-                      </div>
-                      <div style={{ fontSize: '16px', fontWeight: 600, color: '#1976d2' }}>
+                      Name
+                    </th>
+                    <th style={{
+                      padding: '12px 16px',
+                      textAlign: 'left',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      color: '#5f6368',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      borderBottom: '1px solid #e1e5e9'
+                    }}>
+                      Date
+                    </th>
+                    <th style={{
+                      padding: '12px 16px',
+                      textAlign: 'left',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      color: '#5f6368',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      borderBottom: '1px solid #e1e5e9'
+                    }}>
+                      Year
+                    </th>
+                    <th style={{
+                      padding: '12px 16px',
+                      textAlign: 'right',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      color: '#5f6368',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      borderBottom: '1px solid #e1e5e9'
+                    }}>
+                      Total TCC
+                    </th>
+                    <th style={{
+                      padding: '12px 16px',
+                      textAlign: 'center',
+                      fontSize: '12px',
+                      fontWeight: '500',
+                      color: '#5f6368',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                      borderBottom: '1px solid #e1e5e9',
+                      width: '120px'
+                    }}>
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                
+                {/* Table Body */}
+                <tbody>
+                  {calculations.map((calc, index) => (
+                    <tr
+                      key={calc.id}
+                      style={{
+                        backgroundColor: selectedId === calc.id ? '#e8f0fe' : (index % 2 === 0 ? '#ffffff' : '#f8f9fa'),
+                        borderBottom: '1px solid #f1f3f4',
+                        cursor: 'pointer',
+                        transition: 'background-color 0.15s'
+                      }}
+                      onClick={() => setSelectedId(calc.id)}
+                      onMouseEnter={(e) => {
+                        if (selectedId !== calc.id) {
+                          e.currentTarget.style.backgroundColor = '#f1f3f4';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (selectedId !== calc.id) {
+                          e.currentTarget.style.backgroundColor = index % 2 === 0 ? '#ffffff' : '#f8f9fa';
+                        }
+                      }}
+                    >
+                      {/* Name */}
+                      <td style={{ padding: '12px 16px', borderBottom: '1px solid #f1f3f4' }}>
+                        <div>
+                          <div style={{ 
+                            fontSize: '14px', 
+                            fontWeight: '500', 
+                            color: '#1a1a1a',
+                            marginBottom: '2px'
+                          }}>
+                            {calc.name}
+                          </div>
+                          <div style={{ 
+                            fontSize: '11px', 
+                            color: '#5f6368'
+                          }}>
+                            ID: {calc.id.slice(-8)}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Date */}
+                      <td style={{ 
+                        padding: '12px 16px', 
+                        fontSize: '13px', 
+                        color: '#5f6368',
+                        borderBottom: '1px solid #f1f3f4'
+                      }}>
+                        {new Date(calc.timestamp).toLocaleDateString()}
+                      </td>
+
+                      {/* Year */}
+                      <td style={{ 
+                        padding: '12px 16px', 
+                        fontSize: '13px', 
+                        color: '#5f6368',
+                        borderBottom: '1px solid #f1f3f4'
+                      }}>
+                        {calc.year}
+                      </td>
+
+                      {/* Total TCC */}
+                      <td style={{ 
+                        padding: '12px 16px', 
+                        fontSize: '14px', 
+                        fontWeight: '500', 
+                        color: '#1a73e8',
+                        fontFamily: 'monospace',
+                        textAlign: 'right',
+                        borderBottom: '1px solid #f1f3f4'
+                      }}>
                         {formatCurrency(calc.totals.tcc)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                      </td>
+
+                      {/* Actions */}
+                      <td style={{ 
+                        padding: '12px 16px', 
+                        textAlign: 'center',
+                        borderBottom: '1px solid #f1f3f4'
+                      }}>
+                        <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleLoad(calc);
+                            }}
+                            style={{
+                              backgroundColor: '#1a73e8',
+                              color: 'white',
+                              border: 'none',
+                              padding: '6px 12px',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '11px',
+                              fontWeight: '500',
+                              transition: 'background-color 0.2s',
+                              fontFamily: 'Google Sans, Roboto, Arial, sans-serif'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#1557b0'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#1a73e8'}
+                          >
+                            Load
+                          </button>
+                          <button
+                            onClick={(e) => handleDelete(calc.id, e)}
+                            style={{
+                              backgroundColor: '#dc3545',
+                              color: 'white',
+                              border: 'none',
+                              padding: '6px 12px',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '11px',
+                              transition: 'background-color 0.2s',
+                              fontFamily: 'Google Sans, Roboto, Arial, sans-serif'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#c82333'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#dc3545'}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

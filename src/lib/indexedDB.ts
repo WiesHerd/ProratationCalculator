@@ -7,6 +7,7 @@ export interface CalculationRecord {
   periods: any[];
   derivedItems: any[];
   targetCalculatorItems: any[]; // Add Target Calculator items
+  marketData?: any[]; // Market data for percentile analysis
   totals: {
     totalsByComponent: Record<string, number>;
     derivedTotals: Record<string, number>;
@@ -47,7 +48,9 @@ class IndexedDBService {
   }
 
   async saveCalculation(record: Omit<CalculationRecord, 'id' | 'timestamp'>): Promise<string> {
+    console.log('IndexedDB: Starting saveCalculation...');
     await this.ensureDB();
+    console.log('IndexedDB: Database ensured, creating record...');
     
     const id = crypto.randomUUID();
     const timestamp = Date.now();
@@ -57,13 +60,36 @@ class IndexedDBService {
       timestamp
     };
 
-    return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(['calculations'], 'readwrite');
-      const store = transaction.objectStore('calculations');
-      const request = store.add(fullRecord);
+    console.log('IndexedDB: Record created, starting transaction...');
 
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(id);
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = this.db!.transaction(['calculations'], 'readwrite');
+        const store = transaction.objectStore('calculations');
+        const request = store.add(fullRecord);
+
+        request.onerror = () => {
+          console.error('IndexedDB: Save request failed:', request.error);
+          reject(request.error);
+        };
+        
+        request.onsuccess = () => {
+          console.log('IndexedDB: Save request succeeded, resolving...');
+          resolve(id);
+        };
+
+        transaction.oncomplete = () => {
+          console.log('IndexedDB: Transaction completed successfully');
+        };
+
+        transaction.onerror = () => {
+          console.error('IndexedDB: Transaction failed:', transaction.error);
+        };
+
+      } catch (error) {
+        console.error('IndexedDB: Error in saveCalculation:', error);
+        reject(error);
+      }
     });
   }
 
@@ -145,6 +171,19 @@ class IndexedDBService {
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(['settings'], 'readwrite');
       const store = transaction.objectStore('settings');
+      const request = store.clear();
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
+    });
+  }
+
+  async clearAllCalculations(): Promise<void> {
+    await this.ensureDB();
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(['calculations'], 'readwrite');
+      const store = transaction.objectStore('calculations');
       const request = store.clear();
 
       request.onerror = () => reject(request.error);
